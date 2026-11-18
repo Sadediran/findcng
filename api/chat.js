@@ -20,7 +20,9 @@ import { json, sb, supabaseConfigured, rateLimit, isMissingTableError } from "./
 import { readFileSync } from "node:fs";
 
 // Single named constant — change the model here and nowhere else.
-const MODEL = "gemini-2.5-flash";
+// 18 Nov 2026: gemini-2.5-flash is retired for new API users (Gemini 404);
+// Google's own error message directs new users to gemini-3.8-flash.
+const MODEL = "gemini-3.8-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const MAX_QUESTION = 500;
 const MAX_OUTPUT_TOKENS = 400;
