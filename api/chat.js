@@ -255,6 +255,8 @@ export default async function handler(req, res) {
       configured: true,
     });
   } catch (e) {
+    // Log the real cause server-side (status + message only — never the key).
+    console.error("chat failed:", e && e.message ? e.message : String(e));
     return json(res, 502, { ok: false, error: "The AI service could not answer right now — please try again in a moment." });
   }
 }
