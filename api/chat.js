@@ -198,7 +198,7 @@ async function askGemini(apiKey, prompt) {
   });
   const body = await r.json().catch(() => null);
   if (!r.ok) {
-    throw new Error(`Gemini ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 120)}`);
+    throw new Error(`Gemini ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
   }
   const text = body?.candidates?.[0]?.content?.parts
     ?.map((p) => p.text || "").join("").trim();
