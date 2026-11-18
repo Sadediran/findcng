@@ -33,9 +33,10 @@ const MAX_QUESTION = 500;
 const MAX_OUTPUT_TOKENS = 1200;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
 const SEARCH_TIMEOUT_MS = 5000;
-// Per-attempt timeout for one Gemini call (askGemini retries once on 503/429
-// after an 8s backoff; 2 x 20s + 8s + ~5s search stays inside the 60s cap).
-const GEMINI_TIMEOUT_MS = 20000;
+// Per-attempt timeout for one Gemini call. Budget: 2 models x 25s + ~5s
+// search stays inside the 60s function cap (no backoff between models —
+// the model switch itself is the remedy for overload).
+const GEMINI_TIMEOUT_MS = 25000;
 
 // --- Knowledge base + station names (loaded once per instance) ----------
 let knowledgeText = null; // null = not tried yet; "" = failed to load
@@ -197,12 +198,11 @@ const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about C
 
 async function askGemini(apiKey, prompt) {
   // Model fallback chain: try each model once; on transient overload
-  // (503/429) wait 8s and try the next model. Budget: 2 x 20s + 8s backoff,
-  // plus the ~5s search, stays inside the 60s function cap.
+  // (503/429) OR a timeout, move straight to the next model. Budget:
+  // 2 x 25s + ~5s search stays inside the 60s function cap.
   let lastError = null;
   for (let i = 0; i < MODELS.length; i++) {
     const model = MODELS[i];
-    if (i > 0) await new Promise((r) => setTimeout(r, 8000));
     try {
       const r = await fetch(geminiUrl(model), {
         method: "POST",
@@ -230,7 +230,9 @@ async function askGemini(apiKey, prompt) {
       if (!text) throw new Error(`Gemini ${model} returned no answer`);
       return text;
     } catch (e) {
-      if (i < MODELS.length - 1 && /503|429/.test(e.message)) { lastError = e; continue; }
+      // Transient failures (overload OR timeout) fall through to the next
+      // model; anything else throws immediately.
+      if (i < MODELS.length - 1 && /503|429|abort|timeout/i.test(e.message)) { lastError = e; continue; }
       throw e;
     }
   }
