@@ -221,7 +221,7 @@ import urllib.parse
 
 BASE = "https://findcng.vercel.app"
 urls = [("", "1.0", "daily")]
-for view in ["stations", "centres", "route", "safety", "calculator",
+for view in ["stations", "centres", "safety", "calculator",
              "news", "outages", "help", "about", "privacy", "register"]:
     urls.append((f"?view={view}", "0.8", "weekly"))
 for s in states_present:

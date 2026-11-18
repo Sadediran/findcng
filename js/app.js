@@ -22,11 +22,9 @@
   let reportsLive = false;      // true once /api/reports has answered OK
   let userLoc = null;           // { lat, lng, label }
   let map = null, clusterLayer = null, userMarker = null;
-  let baseLayers = null;        // { satellite, street, dark } tile layers for the main map
+  let baseLayers = null;        // { satellite, street } tile layers for the main map
   let mapLayer = "satellite";   // current base layer kind; persisted as findcng_maplayer
   let tileFallbackArmed = true; // false once a tile-failure fallback has fired (re-armed by a manual switch)
-  let routeMap = null, routeLayer = null, routePins = { from: null, to: null };
-  let routeState = null;        // { routes, selected, stops, fallback }
   let currentStation = null;    // id open in the detail view
   let prevView = "map";
   let reportStatus = null;      // status picked in the report sheet
@@ -50,11 +48,6 @@
     return 2 * R * Math.asin(Math.sqrt(h));
   }
   function fmtKm(km) { return km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km"; }
-  function fmtDur(mins) {
-    if (mins < 60) return Math.round(mins) + " min";
-    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
-    return h + " hr" + (m ? " " + m + " min" : "");
-  }
   function timeAgo(ts) {
     const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     if (s < 60) return "just now";
@@ -152,7 +145,7 @@
   function stationUrl(id) { return location.origin + location.pathname + "?station=" + encodeURIComponent(id); }
 
   // ---------------- tabs ----------------
-  const VIEWS = ["map", "stations", "centres", "route", "station", "outages",
+  const VIEWS = ["map", "stations", "centres", "station", "outages",
     "safety", "calculator", "news", "help", "privacy", "register", "about", "more", "chat"];
   function showView(name) {
     if (!VIEWS.includes(name)) name = "map";
@@ -173,7 +166,6 @@
       history.replaceState(null, "", url);
     }
     if (name === "map" && map) setTimeout(() => { map.invalidateSize(); renderMapMarkers(); }, 60);
-    if (name === "route") initRouteMapSoon();
     if (name === "register") initRegisterMapSoon();
     if (name === "outages") renderOutages();
     if (name === "more") renderFavs();
@@ -184,6 +176,23 @@
   });
 
   // ---------------- data loading ----------------
+  // Single source of truth for the "on the map" figure (2.4): counted from
+  // the loaded stations data, never from stats.json. The hero stat, the
+  // "With coordinates" tile and the map caption all read onMapCount(), so
+  // they can never disagree. Before 2.4 the hero read stats.json (build
+  // time) while the caption counted stations.json at runtime, and the two
+  // files skew across cached versions — Saheed's screenshot showed 438 vs
+  // 439 at once. A pin needs both coordinates, so entries with only one
+  // (none today) do not count.
+  function onMapCount() {
+    return stations.filter((s) => s.lat && s.lng).length;
+  }
+  function renderMapCount() {
+    const el = $("map-count");
+    if (!el) return;
+    el.textContent = stations.length + " stations & centres nationwide · " +
+      onMapCount() + " on the map (only these have coordinates so far)";
+  }
   function loadStations() {
     return Promise.all([
       fetch("data/stations.json").then((r) => r.json()),
@@ -200,8 +209,7 @@
         renderCentres();
         renderMapMarkers();
         renderNearest();
-        $("map-count").textContent = stations.length + " stations & centres nationwide · " +
-          stations.filter((s) => s.lat).length + " on the map (only these have coordinates so far)";
+        renderMapCount();
         return loadApprovedCentres();
       })
       .then(() => handleDeepLink())
@@ -227,10 +235,12 @@
           });
         });
         populateStateFilters();
+        renderStats();
         renderStations();
         renderCentres();
         renderMapMarkers();
         renderNearest();
+        renderMapCount();
       })
       .catch(() => { /* approved centres are optional; seed data still works */
         runtimeCountsFailed = true; renderStats();
@@ -251,7 +261,7 @@
       statTile(stats.picng_refuel_register_matched.toLocaleString(), "On the Pi-CNG refuelling register", stats.picng_refuel_register_label) +
       statTile(stats.needs_reverification.toLocaleString(), "Need re-verification", stats.needs_reverification_label) +
       statTile(stats.states_with_data + " / 37", "States + FCT with data", stats.states_with_data_label) +
-      statTile(stats.with_coordinates.toLocaleString(), "With coordinates", stats.with_coordinates_label);
+      statTile(onMapCount().toLocaleString(), "With coordinates", stats.with_coordinates_label);
     const live = runtimeCounts
       ? statTile(runtimeCounts.verified.toLocaleString(), "Independently verified (live)", "Centres registered here that passed human verification.", true) +
         statTile(runtimeCounts.pending.toLocaleString(), "Pending verification (live)", "Submissions awaiting review — not listed publicly until approved.", true)
@@ -269,7 +279,7 @@
     if (hero) hero.innerHTML =
       `<div class="hero-stat"><b>${stats.total_records.toLocaleString()}</b><span>stations &amp; centres</span></div>` +
       `<div class="hero-stat"><b>${stats.states_with_data} / 37</b><span>states + FCT</span></div>` +
-      `<div class="hero-stat"><b>${stats.with_coordinates.toLocaleString()}</b><span>on the map</span></div>`;
+      `<div class="hero-stat"><b>${onMapCount().toLocaleString()}</b><span>on the map</span></div>`;
     const lede = $("stations-lede");
     if (lede) lede.textContent = `Every CNG refuelling station and conversion centre in the dataset — ${stats.total_records} entries across ${stats.states_with_data} states. Search by name, town or operator.`;
     const nodata = $("nodata-note");
@@ -320,19 +330,16 @@
     const el = $("map");
     if (el) el.innerHTML = `<div class="empty" style="padding:60px 16px"><div class="big">🗺️</div><p><b>The map could not load.</b></p><p>${msg}</p><p>The station list, directory, safety hub and calculator still work — use the tabs at the bottom.</p></div>`;
   }
-  // ---------------- map layers (2.3) ----------------
-  // Three base layers; satellite (Esri World Imagery) is the default, like the
+  // ---------------- map layers (2.3; dark removed in 2.4) ----------------
+  // Two base layers; satellite (Esri World Imagery) is the default, like the
   // NIPOST postcode finder. Choice persisted as findcng_maplayer.
-  // NOTE on the dark URL: CARTO's current docs list a keyed /rastertiles/ URL
-  // (https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=YOUR_KEY)
-  // but this app has no CARTO API key, and the legacy keyless URL below still
-  // serves HTTP 200, so it stays. The {r} placeholder is Leaflet's own retina
-  // token (vendored 1.9.4 substitutes "@2x" on retina displays, "" otherwise)
-  // and CARTO serves @2x tiles — verified, not a bug. If the dark (or
-  // satellite) layer ever does fail, watchTileErrors falls back to street.
+  // Dark was removed 18 Nov 2026: CARTO's keyless dark endpoint died — it
+  // still returns HTTP 200, but the image is a 2.5 KB "API KEY REQUIRED"
+  // watermark PNG instead of map tiles, so the dark layer tiled the
+  // watermark across the map. A stored "dark" choice now maps to satellite.
   const MAP_LAYERS = {
     satellite: {
-      // Esri World Imagery — note the {z}/{y}/{x} order (unlike OSM/CARTO).
+      // Esri World Imagery — note the {z}/{y}/{x} order (unlike OSM).
       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       label: "Satellite",
@@ -342,24 +349,20 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       label: "Street",
     },
-    dark: {
-      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      label: "Dark",
-    },
   };
   const MAP_LAYER_KEY = "findcng_maplayer";
   function storedMapLayer() {
     try {
       const v = localStorage.getItem(MAP_LAYER_KEY);
       if (v && MAP_LAYERS[v]) return v;
-      // Migration (2.3): honour the old dark toggle for existing users.
-      if (localStorage.getItem("findcng_darkmap") === "1") return "dark";
+      // Migration (2.4): the dark layer is gone — a stored "dark" choice, or
+      // the old findcng_darkmap toggle from 2.3, now means satellite.
+      if (v === "dark" || localStorage.getItem("findcng_darkmap") === "1") return "satellite";
     } catch { /* ignore */ }
     return "satellite";
   }
   // Fresh layer instance per map (one L.tileLayer cannot live on two maps);
-  // the route-planner and registration maps share the user's layer choice.
+  // the registration map shares the user's layer choice.
   function createBaseLayer(kind) {
     const def = MAP_LAYERS[kind] || MAP_LAYERS.street;
     return L.tileLayer(def.url, { maxZoom: 19, attribution: def.attribution });
@@ -386,7 +389,7 @@
     if (opts.fallbackFrom) toast(MAP_LAYERS[opts.fallbackFrom].label + " map couldn't load — showing street map.");
   }
   // Tile-failure fallback: 3+ tile errors within 10 seconds on the satellite
-  // or dark layer means the provider is failing, not one bad tile — switch to
+  // layer means the provider is failing, not one bad tile — switch to
   // the street layer so the map is never left broken or blank. The street
   // layer itself is never watched, so the fallback cannot loop.
   function watchTileErrors(layer, kind) {
@@ -409,10 +412,8 @@
     baseLayers = {
       satellite: createBaseLayer("satellite"),
       street: createBaseLayer("street"),
-      dark: createBaseLayer("dark"),
     };
     watchTileErrors(baseLayers.satellite, "satellite");
-    watchTileErrors(baseLayers.dark, "dark");
     mapLayer = storedMapLayer();
     baseLayers[mapLayer].addTo(map);
     try { localStorage.setItem(MAP_LAYER_KEY, mapLayer); } catch { /* ignore */ }
@@ -582,7 +583,7 @@
       .sort((a, b) => a.d - b.d)
       .slice(0, 8);
     if (!near.length) {
-      box.innerHTML = `<div class="empty"><p>No mapped stations near you yet — only ${stations.filter((s) => s.lat).length} of ${stations.length} entries have coordinates so far. Use the Stations tab to browse the full list by state.</p></div>`;
+      box.innerHTML = `<div class="empty"><p>No mapped stations near you yet — only ${onMapCount()} of ${stations.length} entries have coordinates so far. Use the Stations tab to browse the full list by state.</p></div>`;
       return;
     }
     box.innerHTML = `<h3>Nearest mapped stations</h3>` + near.map(({ s, d }) =>
@@ -1144,281 +1145,12 @@
       });
   }
 
-  // ---------------- route planner ----------------
-  // OSRM public API (free, no key) for driving routes. If OSRM is
-  // unreachable, a straight-line corridor version is shown and labelled.
-  const OSRM = "https://router.project-osrm.org/route/v1/driving";
-  const NOMINATIM = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ng&q=";
-  function initRouteMapSoon() {
-    setTimeout(() => {
-      if (routeMap) { routeMap.invalidateSize(); return; }
-      if (!leafletReady()) return;
-      routeMap = L.map("route-map", { zoomControl: true }).setView(F.NIGERIA_CENTRE, F.NIGERIA_ZOOM);
-      createBaseLayer(storedMapLayer()).addTo(routeMap);
-      routeLayer = L.layerGroup().addTo(routeMap);
-      routeMap.on("click", (e) => {
-        // Pin mode: the next tap sets whichever endpoint is waiting for a pin.
-        if ($("route-from-type").value === "pin" && !routePins.from) {
-          routePins.from = { lat: e.latlng.lat, lng: e.latlng.lng, label: "Pinned point" };
-          toast("Starting point set from the map.");
-        } else if ($("route-to-type").value === "pin" && !routePins.to) {
-          routePins.to = { lat: e.latlng.lat, lng: e.latlng.lng, label: "Pinned point" };
-          toast("Destination set from the map.");
-        }
-        drawRoutePins();
-      });
-    }, 80);
-  }
-  function drawRoutePins() {
-    if (!routeMap || !routeLayer) return;
-    routeLayer.clearLayers();
-    if (routeState) drawRoute(routeState.selected ?? 0, false);
-    ["from", "to"].forEach((k) => {
-      const p = routePins[k];
-      if (p) L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2,
-        fillColor: k === "from" ? "#0b6e4f" : "#d64545", fillOpacity: 1 }).addTo(routeLayer)
-        .bindPopup(esc((k === "from" ? "Start: " : "Destination: ") + p.label));
-    });
-  }
-  function fillStationSelects() {
-    const mapped = stations.filter((s) => s.lat && s.lng && s.type !== "conversion")
-      .sort((a, b) => (a.state + a.name).localeCompare(b.state + b.name));
-    ["route-from-station", "route-to-station"].forEach((id) => {
-      const sel = $(id);
-      sel.innerHTML = mapped.length
-        ? mapped.map((s) => `<option value="${s.id}">${esc(s.name)} — ${esc(s.city || "")}, ${esc(s.state)}</option>`).join("")
-        : `<option value="">No mapped refuelling stations yet</option>`;
-    });
-  }
-  function geocodePlace(q) {
-    return fetch(NOMINATIM + encodeURIComponent(q + ", Nigeria"))
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j || !j.length) return null;
-        return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon), label: j[0].display_name.split(",").slice(0, 2).join(",") };
-      })
-      .catch(() => null);
-  }
-  function gpsPoint() {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) return resolve(null);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location (GPS)" }),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 12000 }
-      );
-    });
-  }
-  async function resolveEndpoint(which) {
-    const type = $(`route-${which}-type`).value;
-    if (type === "gps") {
-      if (userLoc) return { lat: userLoc.lat, lng: userLoc.lng, label: userLoc.label };
-      return gpsPoint();
-    }
-    if (type === "station") {
-      const s = stations.find((x) => x.id === $(`route-${which}-station`).value);
-      return s ? { lat: s.lat, lng: s.lng, label: s.name, stationId: s.id } : null;
-    }
-    if (type === "pin") {
-      return routePins[which];
-    }
-    const q = $(`route-${which}`).value.trim();
-    if (!q) return null;
-    return geocodePlace(q);
-  }
-  function osrmRoute(coords, alternatives) {
-    const path = coords.map((c) => `${c.lng},${c.lat}`).join(";");
-    const url = `${OSRM}/${path}?overview=full&geometries=geojson&alternatives=${alternatives ? "true" : "false"}&steps=false`;
-    return fetch(url).then((r) => r.json()).then((j) => {
-      if (!j || j.code !== "Ok" || !j.routes || !j.routes.length) return null;
-      return j.routes;
-    }).catch(() => null);
-  }
-  // Stations within `corridorKm` of the route line, ordered along the route.
-  function stationsAlongRoute(geometry, corridorKm) {
-    const pts = geometry.coordinates;
-    const step = Math.max(1, Math.floor(pts.length / 400));
-    const sampled = [];
-    for (let i = 0; i < pts.length; i += step) sampled.push(pts[i]);
-    sampled.push(pts[pts.length - 1]);
-    const cands = [];
-    stations.filter((s) => s.lat && s.lng && s.type !== "conversion").forEach((s) => {
-      let best = Infinity, bestIdx = 0;
-      sampled.forEach((p, i) => {
-        const d = haversineKm(s.lat, s.lng, p[1], p[0]);
-        if (d < best) { best = d; bestIdx = i; }
-      });
-      if (best <= corridorKm) cands.push({ s, distToRoute: best, alongIdx: bestIdx });
-    });
-    // Route distance of each sample point (cumulative).
-    let cum = 0;
-    const cumDist = [0];
-    for (let i = 1; i < sampled.length; i++) {
-      cum += haversineKm(sampled[i - 1][1], sampled[i - 1][0], sampled[i][1], sampled[i][0]);
-      cumDist.push(cum);
-    }
-    cands.forEach((c) => { c.alongKm = cumDist[c.alongIdx] || 0; });
-    cands.sort((a, b) => a.alongKm - b.alongKm);
-    return { cands, totalKm: cum };
-  }
-  function pickStops(cands, totalKm, rangeKm) {
-    const stops = [];
-    let lastKm = 0;
-    cands.forEach((c) => {
-      if (c.alongKm < rangeKm * 0.5) return;           // too early to need fuel
-      if (totalKm - c.alongKm < 10) return;            // too close to the end
-      if (c.alongKm - lastKm < rangeKm * 0.7) return;  // too close to last stop
-      stops.push(c);
-      lastKm = c.alongKm;
-    });
-    return stops;
-  }
-  async function planRoute() {
-    const msg = $("route-msg");
-    const out = $("route-out");
-    msg.textContent = "Planning your route…";
-    msg.className = "notice"; msg.classList.remove("hidden");
-    out.innerHTML = "";
-    const from = await resolveEndpoint("from");
-    const to = await resolveEndpoint("to");
-    if (!from || !to) {
-      msg.textContent = "Could not place one of the two points. " +
-        (!from ? "Check the starting point — for a place name, try a town or area name. " : "") +
-        (!to ? "Check the destination." : "") +
-        "For a map pin, tap the route map below first.";
-      msg.className = "notice err"; msg.classList.remove("hidden");
-      return;
-    }
-    const rangeKm = Math.max(20, Math.min(600, parseFloat($("route-range").value) || 150));
-    const auto = $("route-auto").checked;
-    const routes = await osrmRoute([from, to], true);
-    if (routes) {
-      routeState = { routes, from, to, rangeKm, auto, fallback: false, stopsByRoute: {} };
-      if (auto) routeState.stopsByRoute[0] = await stopsForRoute(0);
-      renderRoute(0);
-      msg.classList.add("hidden");
-      return;
-    }
-    // Straight-line fallback — labelled plainly, never passed off as a road route.
-    const dist = haversineKm(from.lat, from.lng, to.lat, to.lng);
-    const line = { type: "LineString", coordinates: [[from.lng, from.lat], [to.lng, to.lat]] };
-    const { cands } = stationsAlongRoute(line, 10);
-    const stops = auto ? pickStops(cands, dist, rangeKm) : [];
-    routeState = { routes: null, from, to, rangeKm, auto, fallback: true,
-      fallbackRoute: { distance: dist * 1000, duration: (dist / 40) * 3600, geometry: line }, stops };
-    renderRoute(-1);
-    msg.textContent = "The routing service could not be reached, so this is a straight-line estimate — not a road route. Distances are as the crow flies; real driving distance will be longer.";
-    msg.className = "notice"; msg.classList.remove("hidden");
-  }
-  async function stopsForRoute(idx) {
-    const r = routeState.routes[idx];
-    const { cands, totalKm } = stationsAlongRoute(r.geometry, 5);
-    const stops = pickStops(cands, totalKm, routeState.rangeKm);
-    if (!stops.length) return { stops: [], legs: null };
-    // Re-route through the stops so each leg has real time/distance.
-    const coords = [routeState.from, ...stops.map((c) => ({ lat: c.s.lat, lng: c.s.lng })), routeState.to];
-    const via = await osrmRoute(coords, false);
-    if (via && via[0] && via[0].legs) return { stops, legs: via[0].legs, geometry: via[0].geometry,
-      distance: via[0].distance, duration: via[0].duration };
-    return { stops, legs: null };
-  }
-  function drawRoute(idx, fit = true) {
-    if (!routeMap || !routeLayer) return;
-    routeLayer.clearLayers();
-    const st = routeState;
-    let geom = null;
-    if (st.fallback) geom = st.fallbackRoute.geometry;
-    else if (st.auto && st.stopsByRoute[idx] && st.stopsByRoute[idx].geometry) geom = st.stopsByRoute[idx].geometry;
-    else if (st.routes) geom = st.routes[idx].geometry;
-    if (geom) {
-      const latlngs = geom.coordinates.map((c) => [c[1], c[0]]);
-      L.polyline(latlngs, { color: st.fallback ? "#d99300" : "#0b6e4f", weight: 5,
-        dashArray: st.fallback ? "10 8" : null }).addTo(routeLayer);
-      if (fit) routeMap.fitBounds(L.polyline(latlngs).getBounds().pad(0.15));
-    }
-    const stops = st.fallback ? st.stops : (st.stopsByRoute[idx] ? st.stopsByRoute[idx].stops : []);
-    (stops || []).forEach((c) => {
-      L.marker([c.s.lat, c.s.lng], { icon: markerIcon(statusOf(c.s.id), c.s.type, coordPrecision(c.s)) })
-        .bindPopup(popupHtml(c.s)).addTo(routeLayer);
-    });
-    [st.from, st.to].forEach((p, i) => {
-      L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2,
-        fillColor: i === 0 ? "#0b6e4f" : "#d64545", fillOpacity: 1 }).addTo(routeLayer)
-        .bindPopup(esc((i === 0 ? "Start: " : "Destination: ") + p.label));
-    });
-  }
-  function renderRoute(idx) {
-    const st = routeState;
-    st.selected = idx;
-    const out = $("route-out");
-    const mapEl = $("route-map");
-    mapEl.classList.remove("hidden");
-    initRouteMapSoon();
-    setTimeout(() => drawRoute(idx), 120);
-    let totalKm, totalMin, legsHtml = "", stops = [];
-    if (st.fallback) {
-      totalKm = st.fallbackRoute.distance / 1000;
-      totalMin = st.fallbackRoute.duration / 60;
-      stops = st.stops;
-      legsHtml = legsFromStops(st.from, stops, st.to, null, totalKm);
-    } else {
-      const r = st.routes[idx];
-      const withStops = st.auto && st.stopsByRoute[idx];
-      totalKm = (withStops && st.stopsByRoute[idx].distance ? st.stopsByRoute[idx].distance : r.distance) / 1000;
-      totalMin = (withStops && st.stopsByRoute[idx].duration ? st.stopsByRoute[idx].duration : r.duration) / 60;
-      stops = withStops ? st.stopsByRoute[idx].stops : [];
-      legsHtml = legsFromStops(st.from, stops, st.to, withStops ? st.stopsByRoute[idx].legs : null, totalKm);
-    }
-    const altHtml = (!st.fallback && st.routes.length > 1)
-      ? `<h3>Other routes</h3>` + st.routes.map((r, i) =>
-          `<button class="route-alt ${i === idx ? "sel" : ""}" data-route="${i}"><b>${i === 0 ? "Fastest" : "Alternative " + i}</b> · ${fmtDur(r.duration / 60)} · ${fmtKm(r.distance / 1000)}</button>`).join("")
-      : "";
-    out.innerHTML =
-      `<div class="card"><h3 style="margin-top:0">${esc(st.from.label)} → ${esc(st.to.label)}</h3>` +
-      `<p style="margin:0"><b>${fmtDur(totalMin)} · ${fmtKm(totalKm)}</b>` +
-      (st.fallback ? ` <span class="badge low">Straight-line estimate</span>` : "") +
-      (stops.length ? ` · ${stops.length} refuelling stop(s)` : st.auto ? ` · no mapped station found along this route — check the Stations tab for unmapped ones` : "") +
-      `</p></div>` +
-      `<div class="card">${legsHtml}</div>` +
-      altHtml +
-      `<p class="small">Driving times come from the routing service and do not include queue time at stations — check live status before you leave, and carry enough fuel to reach the next stop. Road conditions and traffic change everything.</p>`;
-    out.querySelectorAll("[data-route]").forEach((b) =>
-      b.addEventListener("click", async () => {
-        const i = parseInt(b.dataset.route, 10);
-        if (st.auto && !st.stopsByRoute[i]) st.stopsByRoute[i] = await stopsForRoute(i);
-        renderRoute(i);
-      }));
-    out.querySelectorAll("[data-station-link]").forEach((el) =>
-      el.addEventListener("click", () => openStation(el.dataset.stationLink)));
-  }
-  // Legs with time/distance between stops + stop cards + ETA rings (images 05, 06).
-  function legsFromStops(from, stops, to, legs, totalKm) {
-    const points = [{ label: from.label, kind: "start" },
-      ...stops.map((c) => ({ label: c.s.name, kind: "stop", station: c.s, alongKm: c.alongKm })),
-      { label: to.label, kind: "end" }];
-    let html = "";
-    let prevKm = 0;
-    points.forEach((p, i) => {
-      if (i > 0) {
-        const leg = legs && legs[i - 1];
-        const legKm = leg ? leg.distance / 1000
-          : p.kind === "end" ? totalKm - prevKm
-          : (p.alongKm || 0) - prevKm;
-        const legMin = leg ? leg.duration / 60 : Math.max(1, legKm * 1.5);
-        html += `<div class="leg"><div class="leg-line"><div class="leg-stem"></div></div>` +
-          `<div style="flex:1"><b>${fmtDur(legMin)} · ${fmtKm(Math.max(0, legKm))}</b> <span class="small">of driving</span></div>` +
-          etaRing(legMin) + `</div>`;
-        prevKm = p.kind === "end" ? totalKm : (p.alongKm || prevKm);
-      }
-      const dot = p.kind === "start" ? "" : p.kind === "stop" ? "stop" : "end";
-      html += `<div class="leg"><div class="leg-line"><div class="leg-dot ${dot}"></div>${i < points.length - 1 ? `<div class="leg-stem"></div>` : ""}</div>` +
-        `<div style="flex:1"><b>${esc(p.label)}</b>` +
-        (p.station ? `<br><span class="small">${esc(p.station.address || "")} · ${esc(p.station.city || "")}, ${esc(p.station.state)}</span><br>${statusBadge(p.station.id, true)} ` +
-          `<button class="btn outline small" data-station-link="${p.station.id}" style="margin-top:6px">View station</button>` : "") +
-        `</div></div>`;
-    });
-    return html;
-  }
+  // ---------------- route planner: REMOVED in 2.4 (18 Nov 2026) ----------------
+  // Saheed asked for it to go: the map is not accurate enough overall and
+  // routing did not pick some areas. The OSRM driving-route code, Nominatim
+  // place lookup, auto stop suggestion, ETA-ring legs and the route map all
+  // lived here. The ETA rings on the nearest-stations list (etaRing) are
+  // NOT part of the planner and stay.
 
   // ---------------- calculator ----------------
   function calc() {
@@ -1718,21 +1450,6 @@
     $("centre-search").addEventListener("input", () => { centresShown = 50; renderCentres(); });
     $("centre-state-filter").addEventListener("change", () => { centresShown = 50; renderCentres(); });
     $("centre-more").addEventListener("click", () => { centresShown += 50; renderCentres(); });
-    // Route planner
-    $("route-plan").addEventListener("click", planRoute);
-    ["from", "to"].forEach((w) => {
-      $(`route-${w}-type`).addEventListener("change", () => {
-        const t = $(`route-${w}-type`).value;
-        $(`route-${w}`).classList.toggle("hidden", t !== "place");
-        $(`route-${w}-station`).classList.toggle("hidden", t !== "station");
-        if (t === "pin") {
-          routePins[w] = null;
-          $("route-map").classList.remove("hidden");
-          initRouteMapSoon();
-          toast(w === "from" ? "Tap the route map to set your starting point." : "Tap the route map to set your destination.");
-        }
-      });
-    });
     // Calculator
     ["calc-vehicle", "calc-km", "calc-days", "calc-kpl", "calc-petrol", "calc-cng", "calc-cost"].forEach((id) => {
       $(id).addEventListener("input", id === "calc-vehicle" ? calcVehicleChange : calc);
@@ -1756,14 +1473,13 @@
     loadVehicleProfile();
     $("price-note").textContent = F.PRICES.priceNote + " Prices as of " + F.PRICES.priceDate + ".";
     calc();
-    fillStationSelects();
     // Offline cache (app shell + station list; API calls are never cached).
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
     // Load data after first paint
     requestAnimationFrame(() => {
-      loadStations().then(() => fillStationSelects());
+      loadStations();
       loadReports();
       setInterval(loadReports, 5 * 60 * 1000); // refresh live reports
     });

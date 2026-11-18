@@ -10,8 +10,15 @@
 //   3. For availability questions: fresh availability_reports (last 2 hours
 //      only). The LLM is told explicitly when NO recent report exists —
 //      it must never invent live availability.
-// Plus a best-effort DuckDuckGo web search (no key). On ANY search failure
-// the answer proceeds without it and search_available:false is returned.
+// Plus a best-effort web search (no key): a fallback chain — DuckDuckGo
+// Lite, then Bing HTML, then the Wikipedia API — tried in turn until one
+// returns results. On ANY search failure the answer proceeds without it
+// and search_available:false is returned. Each attempt logs its outcome
+// server-side (endpoint + status only, never the query).
+//
+// The model answers GENERAL CNG questions from its own knowledge, but
+// Nigeria-specific facts (prices, stations, incidents, Pi-CNG/NADDC
+// findings) must come from the knowledge base or the search results.
 //
 // Env: GEMINI_API_KEY (free Google AI Studio key). Without it the route
 // answers { configured: false } and the app shows "being set up" —
@@ -32,8 +39,13 @@ const MAX_QUESTION = 500;
 // returned one-sentence answers. The prompt still asks for ~150 words.
 const MAX_OUTPUT_TOKENS = 1200;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
-const SEARCH_TIMEOUT_MS = 5000;
-// Per-attempt timeout for one Gemini call. Budget: 2 models x 25s + ~5s
+// Total budget for the whole search chain. Worst case (8s search + 2 x 25s
+// Gemini) still fits the 60s function cap.
+const SEARCH_TOTAL_MS = 8000;
+// Per-endpoint cap inside the total budget.
+const SEARCH_ATTEMPT_MS = 4000;
+const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+// Per-attempt timeout for one Gemini call. Budget: 2 models x 25s + ~8s
 // search stays inside the 60s function cap (no backoff between models —
 // the model switch itself is the remedy for overload).
 const GEMINI_TIMEOUT_MS = 25000;
@@ -66,9 +78,19 @@ function loadStationNames() {
   return stationNames;
 }
 
-// --- DuckDuckGo web search (no key, best effort) --------------------------
-// lite.duckduckgo.com returns simple HTML: <a class="result-link" href="...">
-// + <td class="result-snippet">. Tiny regex parser; any failure -> [].
+// --- Web search (no key, best effort, fallback chain) ---------------------
+// 18 Nov 2026 diagnosis: the old parser matched only double-quoted
+// class="result-link", but DDG Lite now serves single quotes — so the
+// parser silently returned zero results on EVERY call, which is why
+// search_available was always false (see searchDDGLite). The chain below
+// (DDG Lite -> Bing HTML -> Wikipedia API) still stands: DDG Lite is also
+// flaky under repeated requests (timeouts, slow-walking) and may block
+// Vercel's datacenter IPs outright — unverifiable from the VM.
+// NOT in the chain: html.duckduckgo.com/html (empty replies and timeouts
+// even from the VM) and Mojeek (serves a CAPTCHA page). Both dead.
+// Each attempt logs its outcome server-side (endpoint + status only —
+// never the query). The coordinator checks the Vercel function logs after
+// deploy to see which endpoint actually works from Vercel's network.
 function decodeEntities(s) {
   return s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
@@ -85,33 +107,143 @@ function ddgLink(href) {
     return /^https?:\/\//i.test(out) ? out : null;
   } catch { return null; }
 }
-async function webSearch(query) {
+function bingLink(href) {
+  // Bing wraps result links as /ck/a?!...&u=<2-char prefix + base64 target>&ntb=1.
+  // The "u" value carries a 2-character prefix before the base64 payload
+  // ("a1aHR0cHM6..." -> "https://..."), so strip it first; fall back to
+  // decoding the whole value in case Bing ever drops the prefix.
   try {
-    const r = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; FindCNG/2.2)" },
-      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-    });
-    if (!r.ok) return [];
-    const html = await r.text();
-    const out = [];
-    const re = /<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = re.exec(html)) && out.length < 5) {
-      const url = ddgLink(m[1]);
-      const title = stripTags(m[2]);
-      if (url && title) out.push({ title, url, snippet: "" });
+    const u = new URL(decodeEntities(href), "https://www.bing.com");
+    const enc = u.searchParams.get("u");
+    if (enc) {
+      for (const candidate of [enc.slice(2), enc]) {
+        try {
+          const target = Buffer.from(candidate, "base64").toString("utf8");
+          if (/^https?:\/\/[^\s"'<>]+$/i.test(target)) return target;
+        } catch { /* try the next candidate */ }
+      }
+      return null;
     }
-    // Attach the snippet that follows each link, when present.
-    const snip = /<td class="result-snippet">([\s\S]*?)<\/td>/gi;
-    let i = 0;
-    while ((m = snip.exec(html)) && i < out.length) {
-      out[i].snippet = stripTags(m[1]).slice(0, 200);
-      i++;
-    }
-    return out;
-  } catch {
-    return [];
+    return /^https?:\/\//i.test(href) && !u.hostname.endsWith("bing.com") ? href : null;
+  } catch { return null; }
+}
+// lite.duckduckgo.com returns simple HTML: <a ... class='result-link'
+// href="..."> + <td class='result-snippet'>. Tiny regex parser.
+//
+// ROOT CAUSE found 18 Nov 2026: DDG Lite switched its result markup to
+// SINGLE quotes (class='result-link', class='result-snippet') while the
+// old parser only matched double quotes — so it silently returned zero
+// results on every call, which is why search_available was always false.
+// The regexes below accept either quote style, and the link regex no
+// longer assumes class comes before href (DDG now puts href first).
+// Vercel IP-based blocking may ALSO be a factor — unverifiable from the
+// VM — which is why the Bing + Wikipedia fallbacks stay in the chain.
+async function searchDDGLite(query, timeoutMs) {
+  // Full browser headers: with the old "compatible; FindCNG/2.2" UA, Node's
+  // fetch timed out against DDG Lite even from a VM network, while a
+  // browser UA + Accept headers returned 200 with results.
+  const r = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const out = [];
+  const re = /<a([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 5) {
+    if (!/class=['"]result-link['"]/i.test(m[1])) continue;
+    const hm = m[1].match(/href=(["'])(.*?)\1/);
+    const url = hm ? ddgLink(decodeEntities(hm[2])) : null;
+    const title = stripTags(m[2]);
+    if (url && title) out.push({ title, url, snippet: "" });
   }
+  // Attach the snippet that follows each link, when present.
+  const snip = /<td class=['"]result-snippet['"]>([\s\S]*?)<\/td>/gi;
+  let i = 0;
+  while ((m = snip.exec(html)) && i < out.length) {
+    out[i].snippet = stripTags(m[1]).slice(0, 200);
+    i++;
+  }
+  return out;
+}
+// www.bing.com/search returns real results from a VM network; the markup
+// is heavy but the pattern is stable: <h2><a ... href="...ck/a...">Title</a>
+// </h2> plus <div class="b_caption"><p>snippet</p></div> in the same order.
+async function searchBing(query, timeoutMs) {
+  const r = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(query)}`, {
+    headers: { "User-Agent": BROWSER_UA, "Accept-Language": "en" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const out = [];
+  const re = /<h2><a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 5) {
+    const url = bingLink(m[1]);
+    const title = stripTags(m[2]);
+    if (url && title) out.push({ title, url, snippet: "" });
+  }
+  const snip = /<div class="b_caption"><p[^>]*>([\s\S]*?)<\/p>/gi;
+  let i = 0;
+  while ((m = snip.exec(html)) && i < out.length) {
+    out[i].snippet = stripTags(m[1]).slice(0, 200);
+    i++;
+  }
+  return out;
+}
+// Wikipedia's search API needs no key and answers reliably from datacenter
+// IPs. Encyclopedic, so it suits general CNG questions, not news — it is
+// the last resort, not the first. Leading question words are stripped so
+// "How does CNG work?" searches for "CNG work".
+async function searchWikipedia(question, timeoutMs) {
+  let clean = question.replace(/[?.!]+$/g, "").trim();
+  let prev;
+  do {
+    prev = clean;
+    clean = clean.replace(/^(what|how|why|when|where|who|is|are|was|were|do|does|did|can|could|should|would|the|a|an)\s+/i, "");
+  } while (clean !== prev);
+  if (clean.length < 3) return [];
+  const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(clean)}&srlimit=5&format=json`, {
+    headers: { "User-Agent": "FindCNG/2.4 (https://findcng.vercel.app)" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  return (j?.query?.search || []).map((s) => ({
+    title: s.title,
+    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(s.title).replace(/ /g, "_"))}`,
+    snippet: stripTags(s.snippet || "").slice(0, 200),
+  }));
+}
+async function webSearch(question) {
+  const started = Date.now();
+  const attempts = [
+    { name: "ddg-lite", run: (ms) => searchDDGLite(`${question} CNG Nigeria`, ms) },
+    { name: "bing", run: (ms) => searchBing(`${question} CNG Nigeria`, ms) },
+    { name: "wikipedia", run: (ms) => searchWikipedia(question, ms) },
+  ];
+  for (const a of attempts) {
+    const remaining = SEARCH_TOTAL_MS - (Date.now() - started);
+    if (remaining < 500) break;
+    const budget = Math.min(SEARCH_ATTEMPT_MS, remaining);
+    try {
+      const results = await a.run(budget);
+      if (results.length) {
+        console.error(`chat search: ${a.name} ok (${results.length} results)`);
+        return results;
+      }
+      console.error(`chat search: ${a.name} returned no results`);
+    } catch (e) {
+      console.error(`chat search: ${a.name} failed: ${String(e && e.message ? e.message : e).slice(0, 120)}`);
+    }
+  }
+  return [];
 }
 
 // --- Live context ---------------------------------------------------------
@@ -189,12 +321,38 @@ async function availabilityContext(question) {
 
 // --- Gemini ----------------------------------------------------------------
 const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about CNG (compressed natural gas) in Nigeria and about the FindCNG app. Follow these rules strictly:
-1. Every factual claim must come from the VERIFIED KNOWLEDGE BASE below or from a LIVE WEB SEARCH result below. Never use your own general knowledge for Nigerian facts, prices or incidents.
-2. Prices ALWAYS carry their date (e.g. "₦380/SCM since September 2025"). Never quote a price without its date.
-3. NEVER invent live availability. Use ONLY the LIVE AVAILABILITY block below. If it says no recent report exists, say exactly that and point the user at the Map tab in the FindCNG app. Never guess whether a station has gas.
-4. If the answer is not established in the knowledge base or the search results, say "I don't know" plainly — never guess.
-5. Never give DIY instructions for gas systems, cylinders, fittings or repairs. Direct the user to a certified installer / accredited conversion centre instead.
-6. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. End with the source names for the key facts you used.`;
+1. NIGERIA-SPECIFIC FACTS — prices, stations, incidents, Pi-CNG / NADDC findings, FindCNG app facts — must come from the VERIFIED KNOWLEDGE BASE or the LIVE WEB SEARCH results below. Never use your own general knowledge for Nigerian facts, prices or incidents, and never invent station details or prices.
+2. GENERAL CNG KNOWLEDGE — how CNG works, how it affects engines, safety principles, how conversions work, practice in other countries — you MAY answer from your own knowledge. If you are unsure about a general fact, say so rather than guessing.
+3. Prices ALWAYS carry their date (e.g. "₦380/SCM since September 2025"). Never quote a price without its date.
+4. NEVER invent live availability. Use ONLY the LIVE AVAILABILITY block below. If it says no recent report exists, say exactly that and point the user at the Map tab in the FindCNG app. Never guess whether a station has gas.
+5. If a Nigeria-specific answer is not established in the knowledge base or the search results, say "I don't know" plainly — never guess. A general CNG question you genuinely cannot answer also gets a plain "I don't know".
+6. Never give DIY instructions for gas systems, cylinders, fittings or repairs. Direct the user to a certified installer / accredited conversion centre instead.
+7. SCOPE: this chat answers CNG questions only. If the question is not about CNG, fuel, vehicles or the FindCNG app (for example "What is a noun?"), do NOT answer it and do NOT reply with a bare "I don't know". Instead say you answer questions about CNG — fuel savings, safety, stations and conversions in Nigeria — and suggest a CNG question to try.
+8. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. Do NOT end with a "Sources:" line — the app shows sources separately.`;
+
+// Graceful fallback when the model still returns a bare "I don't know."
+// (the prompt asks for the scope message, but this is the safety net).
+// Off-topic questions get the scope message; on-topic ones get an honest
+// "not covered yet" with a nudge toward what the chat does answer.
+const SCOPE_MESSAGE = "I answer questions about CNG — fuel savings, safety, stations and conversions in Nigeria. Try asking how much you could save by switching to CNG, whether CNG is safe, or where to find a conversion centre near you.";
+const UNKNOWN_CNG_MESSAGE = "I don't know — that isn't covered in the FindCNG knowledge base yet. Try asking about CNG safety, fuel savings, stations or conversions.";
+const CNG_TOPIC_RE = /\b(cng|natural gas|lpg|gas|fuel|petrol|diesel|station|conversion|convert|cylinder|engine|vehicle|car|savings|price|cost|safety|safe|nigeria|findcng|refuel|filling|queue|kit|pi-cng|naddc)\b/i;
+const BARE_IDK_RE = /^(i'?m (sorry|afraid)[,.]?\s*)?i (don't|do not) know[.!]?$/i;
+function isBareIDontKnow(text) {
+  const t = text.trim().replace(/\s+/g, " ");
+  return t.length <= 60 && BARE_IDK_RE.test(t);
+}
+function stripSourcesLine(text) {
+  // Safety net: the prompt tells the model not to append a Sources line
+  // (the app shows sources behind a toggle), but strip one anyway if it
+  // appears as a trailing block. Never touches "source" mentions
+  // mid-answer, and never strips when the head would be left too short.
+  const m = text.match(/\n\s*(?:sources?|references?)\s*[:\-–—][\s\S]*$/i);
+  if (!m) return text;
+  const head = text.slice(0, m.index).trimEnd();
+  if (head.length >= 10 && m[0].length <= 600) return head;
+  return text;
+}
 
 async function askGemini(apiKey, prompt) {
   // Model fallback chain: try each model once; on transient overload
@@ -262,7 +420,7 @@ export default async function handler(req, res) {
   try {
     const [news, searchResults, availability] = await Promise.all([
       recentNews(),
-      webSearch(`${question} CNG Nigeria`),
+      webSearch(question),
       AVAILABILITY_RE.test(question) ? availabilityContext(question) : Promise.resolve(null),
     ]);
     const knowledge = loadKnowledge();
@@ -271,11 +429,19 @@ export default async function handler(req, res) {
           `- ${n.date} — ${n.title}${n.summary ? ": " + n.summary : ""}`).join("\n")
       : "RECENT NEWS: none available.";
     const searchBlock = searchResults.length
-      ? "LIVE WEB SEARCH results (use these for facts newer than the knowledge base; cite the link):\n" + searchResults.map((s) =>
+      ? "LIVE WEB SEARCH results (use these for facts newer than the knowledge base):\n" + searchResults.map((s) =>
           `- ${s.title} (${s.url})${s.snippet ? " — " + s.snippet : ""}`).join("\n")
-      : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base only.";
-    const prompt = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer only from search results, or say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}\n\n${availability ? availability + "\n\n" : ""}USER QUESTION: ${question}`;
-    const answer = await askGemini(apiKey, prompt);
+      : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own general CNG knowledge.";
+    const prompt = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general CNG questions from your own knowledge and search results; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}\n\n${availability ? availability + "\n\n" : ""}USER QUESTION: ${question}`;
+    let answer = await askGemini(apiKey, prompt);
+    // The app shows sources behind a toggle, so no "Sources:" line belongs
+    // in the answer text; strip one if the model appended it anyway.
+    answer = stripSourcesLine(answer);
+    // A bare "I don't know." helps nobody: off-topic questions get the
+    // graceful scope message, on-topic ones an honest "not covered yet".
+    if (isBareIDontKnow(answer)) {
+      answer = CNG_TOPIC_RE.test(question) ? UNKNOWN_CNG_MESSAGE : SCOPE_MESSAGE;
+    }
     const sources = [
       ...searchResults.map((s) => ({ title: s.title, url: s.url })),
       ...news.filter((n) => n.url).map((n) => ({ title: n.title, url: n.url })),

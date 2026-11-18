@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>FindCNG Nigeria — Find gas near you, live</title>
-<meta name="description" content="Find CNG near you — live gas availability, verified conversion centres, route planning and safety advice, nationwide across Nigeria. Free, no account needed.">
+<meta name="description" content="Find CNG near you — live gas availability, verified conversion centres and safety advice, nationwide across Nigeria. Free, no account needed.">
 <meta name="keywords" content="CNG Nigeria, CNG stations Nigeria, gas near me, conversion centres, Pi-CNG, NIPOST postcode, CNG safety, CNG calculator">
 <meta name="author" content="ED/26B/2316 — NADDC–NYSC CNG Retrofitting Training Programme">
 <link rel="canonical" href="https://findcng.vercel.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FindCNG Nigeria">
 <meta property="og:title" content="FindCNG Nigeria — Find gas near you, live">
-<meta property="og:description" content="Live CNG availability, verified conversion centres and route planning — nationwide across Nigeria. Free, no account needed.">
+<meta property="og:description" content="Live CNG availability, verified conversion centres and safety advice — nationwide across Nigeria. Free, no account needed.">
 <meta property="og:url" content="https://findcng.vercel.app/">
 <meta property="og:locale" content="en_NG">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="FindCNG Nigeria — Find gas near you, live">
-<meta name="twitter:description" content="Live CNG availability, verified conversion centres and route planning — nationwide across Nigeria.">
+<meta name="twitter:description" content="Live CNG availability, verified conversion centres and safety advice — nationwide across Nigeria.">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%230b6e4f'/><path d='M50 18 C50 18 30 38 30 52 a20 20 0 0 0 40 0 C70 38 50 18 50 18z' fill='%23ffc61a'/><circle cx='50' cy='54' r='7' fill='%230b6e4f'/></svg>">
@@ -65,7 +65,6 @@
     <div class="layer-switch" role="group" aria-label="Map style">
       <button class="btn outline small on" data-map-layer="satellite" aria-pressed="true">🛰️ Satellite</button>
       <button class="btn outline small" data-map-layer="street" aria-pressed="false">🗺️ Street</button>
-      <button class="btn outline small" data-map-layer="dark" aria-pressed="false">🌙 Dark</button>
     </div>
   </div>
   <p id="postcode-msg" class="notice hidden"></p>
@@ -132,7 +131,6 @@
   <div class="card">
     <h3 style="margin-top:0">Quick links</h3>
     <div class="chips">
-      <button class="chip" onclick="showView('route')">🛣️ Plan a route</button>
       <button class="chip" onclick="showView('outages')">🔴 Out of gas</button>
       <button class="chip" onclick="showView('calculator')">🧮 Savings calculator</button>
       <button class="chip" onclick="showView('news')">📰 CNG news</button>
@@ -206,46 +204,8 @@
   </div>
 </section>
 
-<!-- ============ ROUTE PLANNER ============ -->
-<section id="view-route" class="view">
-  <h2>Plan a CNG route</h2>
-  <p class="lede">Driving between cities? Plan your refuelling stops before you leave — CNG cannot be bought in a jerrycan, so the route matters.</p>
-  <div class="card">
-    <div class="field">
-      <label for="route-from">From</label>
-      <select id="route-from-type" aria-label="Starting point type">
-        <option value="gps">My location (GPS)</option>
-        <option value="station">A station on the map</option>
-        <option value="place">A place name (town / area)</option>
-        <option value="pin">A point I tap on the map</option>
-      </select>
-      <input type="text" id="route-from" placeholder="Place name — e.g. Benin City" class="hidden" style="margin-top:8px" aria-label="Starting place">
-      <select id="route-from-station" class="hidden" style="margin-top:8px" aria-label="Starting station"></select>
-    </div>
-    <div class="field">
-      <label for="route-to">To</label>
-      <select id="route-to-type" aria-label="Destination type">
-        <option value="place">A place name (town / area)</option>
-        <option value="station">A station on the map</option>
-        <option value="gps">My location (GPS)</option>
-        <option value="pin">A point I tap on the map</option>
-      </select>
-      <input type="text" id="route-to" placeholder="Place name — e.g. Lagos" style="margin-top:8px" aria-label="Destination place">
-      <select id="route-to-station" class="hidden" style="margin-top:8px" aria-label="Destination station"></select>
-    </div>
-    <div class="field">
-      <label for="route-range">Your range on a full tank (km) <span class="hint">— how far you go on one fill; change it to match your car</span></label>
-      <input type="number" id="route-range" value="150" min="20" max="600" step="10">
-    </div>
-    <label class="toggle-row"><span><b>Plan refuelling stops automatically</b> — suggest stations along the route, spaced by your range</span>
-      <input type="checkbox" id="route-auto" checked></label>
-    <p id="route-msg" class="notice hidden"></p>
-    <button class="btn" id="route-plan">Plan my route</button>
-    <p class="small" style="margin-top:10px">Routing uses the free OSRM public service (OpenStreetMap roads). Place names are looked up with Nominatim (OpenStreetMap). If the routing service is unavailable, the app falls back to a straight-line estimate and says so plainly.</p>
-  </div>
-  <div id="route-out"></div>
-  <div id="route-map" style="height:380px;border-radius:14px;border:1px solid var(--line);z-index:0" class="hidden" role="application" aria-label="Route map"></div>
-</section>
+<!-- Route planner removed in 2.4 (18 Nov 2026): the map is not accurate
+     enough overall for routing, and routing did not pick some areas. -->
 
 <!-- ============ STATION DETAIL ============ -->
 <section id="view-station" class="view">
@@ -454,7 +414,7 @@
       <li><b>Centre submissions:</b> the centre's public phone is published if approved. Your private contact and your certificate photo are visible only to the moderator, never published.</li>
       <li><b>No ads, no tracking for advertising, no selling data.</b></li>
       <li><b>AI chat:</b> when you ask a question in “Ask about CNG”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
-      <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your dark-map choice are stored in your own browser (localStorage). They never leave your phone.</li>
+      <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your map style choice are stored in your own browser (localStorage). They never leave your phone.</li>
     </ul>
   </div>
   <div class="card">
@@ -579,7 +539,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">What it does</h3>
-    <p style="margin:0">FindCNG answers three questions: <b>is there gas near me right now, how long is the queue, and is that installer legit?</b> It maps CNG refuelling stations and accredited conversion centres nationwide, shows live availability reported by drivers, plans refuelling stops along a route, and explains safety in plain English and Pidgin.</p>
+    <p style="margin:0">FindCNG answers three questions: <b>is there gas near me right now, how long is the queue, and is that installer legit?</b> It maps CNG refuelling stations and accredited conversion centres nationwide, shows live availability reported by drivers, and explains safety in plain English and Pidgin.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Coverage — honest numbers</h3>
@@ -696,7 +656,6 @@
   <button data-view="map" class="on"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>Map</button>
   <button data-view="stations"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v15"/><path d="M13 8h2.5a2.5 2.5 0 0 1 2.5 2.5V14a2 2 0 0 1-4 0v-1.5"/><path d="M2.5 21h11"/><path d="M7 7.5h4"/></svg></span>Stations</button>
   <button data-view="centres"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Centres</button>
-  <button data-view="route"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg></span>Route</button>
   <button data-view="more"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span>More</button>
 </nav>
 
