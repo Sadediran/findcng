@@ -161,7 +161,8 @@ def check_chat():
     POSTs the fixed safety question 'Is CNG safe?'. If the Gemini key is
     absent, the route must answer configured:false gracefully (HTTP 200,
     answer null). If the key is present, it must return a non-empty answer
-    with a sources list. Also checks the 500-char limit (600 chars -> 400)."""
+    and NO sources field (sources were removed from the chat 18 Nov 2026).
+    Also checks the 500-char limit (600 chars -> 400)."""
     s, r = call("POST", BASE + "/api/chat", {"question": "Is CNG safe?"})
     if r.get("configured") is False:
         check("POST /api/chat (no key: graceful configured:false)",
@@ -169,9 +170,9 @@ def check_chat():
         return
     answered = (s == 200 and r.get("configured") is True and r.get("ok") is True
                 and isinstance(r.get("answer"), str) and len(r["answer"].strip()) > 0
-                and isinstance(r.get("sources"), list))
-    check("POST /api/chat (key set: non-empty answer with sources)", answered,
-          f"HTTP {s} answer_len={len((r.get('answer') or ''))} sources={len(r.get('sources') or [])} search={r.get('search_available')}")
+                and "sources" not in r and "Sources:" not in r.get("answer", ""))
+    check("POST /api/chat (key set: non-empty answer, no sources)", answered,
+          f"HTTP {s} answer_len={len((r.get('answer') or ''))} search={r.get('search_available')}")
     s2, r2 = call("POST", BASE + "/api/chat", {"question": "x" * 600})
     check("POST /api/chat (600 chars -> 400)", s2 == 400, f"HTTP {s2}")
 

@@ -1,8 +1,9 @@
 /* FindCNG Nigeria — "Ask about CNG" chat.
    Self-initializing: wires the #view-chat section, probes /api/chat once
    (the first time the view opens) to learn whether the AI key is set, and
-   renders answers with their sources hidden behind a per-answer
-   "Show sources" toggle (the same links under every answer was link spam).
+   renders plain answers. No sources are shown anywhere in the chat
+   (Saheed, 18 Nov 2026: the links were link spam, and the web search
+   sometimes surfaced junk like login pages).
    No chat history is stored anywhere — messages live only in this page's
    memory and disappear on reload. */
 (function () {
@@ -23,10 +24,6 @@
     }).join("");
   }
 
-  function safeUrl(u) {
-    return /^https?:\/\/[^\s"<>]+$/i.test(String(u || "")) ? u : null;
-  }
-
   var log, input, sendBtn, countEl, boxEl, setupEl, probed = false, busy = false;
 
   function scrollLog() {
@@ -41,48 +38,11 @@
     scrollLog();
   }
 
-  // Sources stay hidden behind a small per-answer toggle: each answer gets
-  // its own button + list, so opening one never opens another.
-  function addAnswerBubble(answer, sources) {
+  // Plain answer only — no sources are shown in the chat at all.
+  function addAnswerBubble(answer) {
     var d = document.createElement("div");
     d.className = "chat-msg ai";
     d.innerHTML = answerHtml(answer);
-    var links = [];
-    (sources || []).forEach(function (src) {
-      var url = safeUrl(src.url);
-      if (url) links.push({ url: url, title: src.title || url });
-    });
-    if (links.length) {
-      var s = document.createElement("div");
-      s.className = "chat-sources hidden";
-      s.innerHTML = "<b>Sources</b>";
-      var ul = document.createElement("ul");
-      links.forEach(function (link) {
-        var li = document.createElement("li");
-        var a = document.createElement("a");
-        a.href = link.url;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.textContent = link.title;
-        li.appendChild(a);
-        ul.appendChild(li);
-      });
-      s.appendChild(ul);
-      var btn = document.createElement("button");
-      btn.type = "button";
-      // Link-like toggle; styled inline so no CSS file needs to change.
-      btn.style.cssText = "background:none;border:none;padding:0;margin-top:10px;color:var(--green);font-size:13px;text-decoration:underline;cursor:pointer;text-align:left";
-      btn.textContent = "Show sources (" + links.length + ")";
-      btn.setAttribute("aria-expanded", "false");
-      btn.addEventListener("click", function () {
-        var hidden = s.classList.toggle("hidden");
-        btn.textContent = hidden ? "Show sources (" + links.length + ")" : "Hide sources";
-        btn.setAttribute("aria-expanded", hidden ? "false" : "true");
-        scrollLog();
-      });
-      d.appendChild(btn);
-      d.appendChild(s);
-    }
     log.appendChild(d);
     scrollLog();
   }
@@ -144,7 +104,7 @@
           return;
         }
         if (r.status === 200 && b.ok && b.answer) {
-          addAnswerBubble(b.answer, b.sources || []);
+          addAnswerBubble(b.answer);
         } else {
           addErrorBubble(b.error || "Something went wrong — please try again.");
         }

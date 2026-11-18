@@ -558,11 +558,6 @@ footer.appfoot a { margin: 0 6px; }
   border: 1px solid #dce9df; border-bottom-left-radius: 5px;
 }
 .chat-msg.ai.err { background: #fde7e7; border-color: #f0b6b6; color: var(--bad-deep); }
-.chat-sources { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 13px; }
-.chat-sources b { color: var(--green-deep); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
-.chat-sources ul { margin: 6px 0 0; padding-left: 18px; }
-.chat-sources li { margin: 4px 0; }
-.chat-sources a { word-break: break-all; }
 .chat-suggest { margin: 14px 0 10px; }
 .chat-input-row { display: flex; gap: 8px; }
 .chat-input-row input { flex: 1; min-width: 0; }

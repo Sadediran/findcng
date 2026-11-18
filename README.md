@@ -16,7 +16,7 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 - **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin
 - **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, annual savings; vehicle profile remembered on the device
 - **News page** — dated programme updates, each with its original source
-- **Ask about CNG** — AI chat (Gemini free tier) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports and web search; every answer shows its sources; no chat logs stored
+- **Ask about CNG** — AI chat (Gemini free tier) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports and web search; no sources shown; no chat logs stored
 - **Privacy page** — retention periods, removal requests (contact TBD)
 - **Official-source directory** — listings come from government and agency sources (the Pi-CNG registers and other public lists); centres do not register themselves
 

@@ -221,6 +221,19 @@ async function searchWikipedia(question, timeoutMs) {
     snippet: stripTags(s.snippet || "").slice(0, 200),
   }));
 }
+// 18 Nov 2026: Bing's HTML sometimes yields junk in the result slots —
+// login pages ("Sign in to your account", "My Account", "My Pay Login
+// Site") and unrelated portals (a health portal's MyChart page) — which
+// reached the prompt's search block and, before their removal, the
+// sources list. Drop login/account pages outright, and keep only results
+// whose title or snippet touches the CNG/fuel topic.
+const JUNK_TITLE_RE = /\b(sign in|log in|login|my account|create account|forgot password|reset password)\b/i;
+const JUNK_URL_RE = /\/(login|signin|sign-in|auth|account\/login|my-account)/i;
+const SEARCH_TOPIC_RE = /\b(cng|natural gas|lpg|gas|fuel|petrol|diesel|station|conversion|convert|cylinder|engine|vehicle|car|savings|price|nigeria|pi-cng|naddc|refuel|filling|queue|kit)\b/i;
+function isUsableResult(r) {
+  if (JUNK_TITLE_RE.test(r.title || "") || JUNK_URL_RE.test(r.url || "")) return false;
+  return SEARCH_TOPIC_RE.test(`${r.title || ""} ${r.snippet || ""}`);
+}
 async function webSearch(question) {
   const started = Date.now();
   const attempts = [
@@ -233,12 +246,12 @@ async function webSearch(question) {
     if (remaining < 500) break;
     const budget = Math.min(SEARCH_ATTEMPT_MS, remaining);
     try {
-      const results = await a.run(budget);
+      const results = (await a.run(budget)).filter(isUsableResult);
       if (results.length) {
         console.error(`chat search: ${a.name} ok (${results.length} results)`);
         return results;
       }
-      console.error(`chat search: ${a.name} returned no results`);
+      console.error(`chat search: ${a.name} returned no usable results`);
     } catch (e) {
       console.error(`chat search: ${a.name} failed: ${String(e && e.message ? e.message : e).slice(0, 120)}`);
     }
@@ -328,7 +341,7 @@ const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about C
 5. If a Nigeria-specific answer is not established in the knowledge base or the search results, say "I don't know" plainly — never guess. A general CNG question you genuinely cannot answer also gets a plain "I don't know".
 6. Never give DIY instructions for gas systems, cylinders, fittings or repairs. Direct the user to a certified installer / accredited conversion centre instead.
 7. SCOPE: this chat answers CNG questions only. If the question is not about CNG, fuel, vehicles or the FindCNG app (for example "What is a noun?"), do NOT answer it and do NOT reply with a bare "I don't know". Instead say you answer questions about CNG — fuel savings, safety, stations and conversions in Nigeria — and suggest a CNG question to try.
-8. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. Do NOT end with a "Sources:" line — the app shows sources separately.`;
+8. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. Do NOT end with a "Sources:" line — the chat shows no sources at all.`;
 
 // Graceful fallback when the model still returns a bare "I don't know."
 // (the prompt asks for the scope message, but this is the safety net).
@@ -344,7 +357,7 @@ function isBareIDontKnow(text) {
 }
 function stripSourcesLine(text) {
   // Safety net: the prompt tells the model not to append a Sources line
-  // (the app shows sources behind a toggle), but strip one anyway if it
+  // (the chat shows no sources at all), but strip one anyway if it
   // appears as a trailing block. Never touches "source" mentions
   // mid-answer, and never strips when the head would be left too short.
   const m = text.match(/\n\s*(?:sources?|references?)\s*[:\-–—][\s\S]*$/i);
@@ -450,7 +463,7 @@ export default async function handler(req, res) {
       : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own general CNG knowledge.";
     const prompt = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general CNG questions from your own knowledge and search results; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}\n\n${availability ? availability + "\n\n" : ""}USER QUESTION: ${question}`;
     let answer = await askGemini(apiKey, prompt);
-    // The app shows sources behind a toggle, so no "Sources:" line belongs
+    // The chat shows no sources at all, so no "Sources:" line belongs
     // in the answer text; strip one if the model appended it anyway.
     answer = stripSourcesLine(answer);
     // A bare "I don't know." helps nobody: off-topic questions get the
@@ -458,14 +471,9 @@ export default async function handler(req, res) {
     if (isBareIDontKnow(answer)) {
       answer = CNG_TOPIC_RE.test(question) ? UNKNOWN_CNG_MESSAGE : SCOPE_MESSAGE;
     }
-    const sources = [
-      ...searchResults.map((s) => ({ title: s.title, url: s.url })),
-      ...news.filter((n) => n.url).map((n) => ({ title: n.title, url: n.url })),
-    ];
     return json(res, 200, {
       ok: true,
       answer,
-      sources,
       search_available: searchResults.length > 0,
       configured: true,
     });
