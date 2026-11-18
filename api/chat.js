@@ -200,7 +200,10 @@ async function askGemini(apiKey, prompt) {
       // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
       // level (medium) made live calls run past 45s. "low" keeps answers
       // fast; our answers are short and grounded, not reasoning tasks.
-      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2, thinkingConfig: { thinkingLevel: "low" } },
+      // NO temperature: Google's guidance for Gemini 3 models is to leave
+      // temperature at its default (1.0) — lowering it "may cause looping
+      // or degraded performance", and our temperature: 0.2 calls hung.
+      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
     }),
     signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
   });
