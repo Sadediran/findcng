@@ -6,7 +6,7 @@
 <title>FindCNG Nigeria — Find gas near you, live</title>
 <meta name="description" content="Find CNG near you — live gas availability, verified conversion centres, route planning and safety advice, nationwide across Nigeria. Free, no account needed.">
 <meta name="keywords" content="CNG Nigeria, CNG stations Nigeria, gas near me, conversion centres, Pi-CNG, NIPOST postcode, CNG safety, CNG calculator">
-<meta name="author" content="Saheed — NADDC–NYSC CNG Retrofitting Training Programme">
+<meta name="author" content="ED/26B/2316 — NADDC–NYSC CNG Retrofitting Training Programme">
 <link rel="canonical" href="https://findcng.vercel.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FindCNG Nigeria">
@@ -19,29 +19,38 @@
 <meta name="twitter:description" content="Live CNG availability, verified conversion centres and route planning — nationwide across Nigeria.">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b6e4f'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23ffc61a' font-family='sans-serif' font-weight='bold'>C</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%230b6e4f'/><path d='M50 18 C50 18 30 38 30 52 a20 20 0 0 0 40 0 C70 38 50 18 50 18z' fill='%23ffc61a'/><circle cx='50' cy='54' r='7' fill='%230b6e4f'/></svg>">
 <link rel="stylesheet" href="css/leaflet.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <header class="topbar">
+  <div class="topbar-inner">
   <div class="brand">
-    <div class="logo">C</div>
+    <div class="logo" aria-hidden="true"><svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="FindCNG logo"><rect width="40" height="40" rx="11" fill="#ffc61a"/><path d="M20 7 C20 7 12 15 12 20.6 a8 8 0 0 0 16 0 C28 15 20 7 20 7z" fill="#06382a"/><circle cx="20" cy="21" r="2.8" fill="#ffc61a"/></svg></div>
     <div>
-      <h1>FindCNG Nigeria</h1>
-      <p>Find gas near you — live availability, verified centres, nationwide.</p>
+      <h1>FindCNG <span>Nigeria</span></h1>
+      <p>Find gas near you — live, nationwide.</p>
     </div>
   </div>
   <div class="top-links">
     <a href="#" onclick="showView('register');return false;">＋ Add your centre</a>
     <a href="#" onclick="showView('about');return false;">About &amp; sources</a>
   </div>
+  </div>
 </header>
 
 <main>
 <!-- ============ MAP ============ -->
 <section id="view-map" class="view active">
+  <div class="hero">
+    <p class="hero-eyebrow">Nigeria · Live CNG tracker</p>
+    <h2 class="hero-title">Find CNG near you.</h2>
+    <p class="hero-sub">Live availability, verified centres, nationwide — free, no account needed.</p>
+    <div id="hero-stats" class="hero-stats" aria-live="polite"></div>
+  </div>
+  <div class="card search-card">
   <div class="map-searchbar">
     <input type="text" id="map-search" placeholder="Search stations, towns, operators…" aria-label="Search stations">
     <button class="btn small" id="map-search-go">Search</button>
@@ -56,7 +65,8 @@
     <button class="btn outline small" id="dark-toggle" aria-pressed="false">🌙 Dark map</button>
   </div>
   <p id="postcode-msg" class="notice hidden"></p>
-  <p id="loc-status" class="small"></p>
+  <p id="loc-status" class="small" style="margin-bottom:0"></p>
+  </div>
 
   <div id="filter-panel" class="card hidden" role="dialog" aria-label="Map filters">
     <h3 style="margin-top:0">Filters</h3>
@@ -472,7 +482,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">Who is responsible</h3>
-    <p style="margin:0">FindCNG Nigeria is a NYSC Community Development Service (CDS) project by Saheed, a serving corps member in the NADDC–NYSC CNG Retrofitting Training Programme. This page will be updated if the project is handed over to another organisation.</p>
+    <p style="margin:0">FindCNG Nigeria is a NYSC Community Development Service (CDS) project by ED/26B/2316, a serving corps member in the NADDC–NYSC CNG Retrofitting Training Programme. This page will be updated if the project is handed over to another organisation.</p>
   </div>
 </section>
 
@@ -574,7 +584,7 @@
   <p class="lede">A public tool built by a corps member inside the CNG programme, for the drivers the programme serves.</p>
   <div class="card">
     <h3 style="margin-top:0">Who built it</h3>
-    <p style="margin:0">Saheed — a serving NYSC corps member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of 300), attached to Fonnd Motor, Benin City (previously Diverse Autocare). This is his Community Development Service (CDS) project. The code is open source; the station data is public fact.</p>
+    <p style="margin:0">ED/26B/2316 — a serving NYSC corps member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of 300), attached to Fonnd Motor, Benin City (previously Diverse Autocare). This is his Community Development Service (CDS) project. The code is open source; the station data is public fact.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">What it does</h3>
@@ -688,14 +698,14 @@
   </div>
 </div>
 
-<div id="toast" class="hidden" style="position:fixed;left:16px;right:16px;bottom:76px;z-index:2000;background:#17211c;color:#fff;padding:14px 16px;border-radius:12px;font-size:15px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.3)"></div>
+<div id="toast" class="hidden"></div>
 
 <nav class="bottomnav" aria-label="Main navigation">
-  <button data-view="map" class="on"><span class="ico">🗺️</span>Map</button>
-  <button data-view="stations"><span class="ico">⛽</span>Stations</button>
-  <button data-view="centres"><span class="ico">🔧</span>Centres</button>
-  <button data-view="route"><span class="ico">🛣️</span>Route</button>
-  <button data-view="more"><span class="ico">⋯</span>More</button>
+  <button data-view="map" class="on"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>Map</button>
+  <button data-view="stations"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v15"/><path d="M13 8h2.5a2.5 2.5 0 0 1 2.5 2.5V14a2 2 0 0 1-4 0v-1.5"/><path d="M2.5 21h11"/><path d="M7 7.5h4"/></svg></span>Stations</button>
+  <button data-view="centres"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Centres</button>
+  <button data-view="route"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg></span>Route</button>
+  <button data-view="more"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span>More</button>
 </nav>
 
 <script src="js/leaflet.js"></script>

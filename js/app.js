@@ -100,6 +100,35 @@
     }
     return `<span class="badge unver">Not on Pi-CNG register</span>`;
   }
+  // Coordinate precision (2.1 data contract): entry.coord_precision is
+  // "exact" | "approximate" | "town". Town-level pins are locality
+  // centroids, NOT exact locations — the UI must say so plainly, never
+  // present them as precise. Fallback for entries that predate the field:
+  // infer from coord_note; when nothing says, say nothing (never guess).
+  function coordPrecision(s) {
+    if (s.coord_precision === "exact" || s.coord_precision === "approximate" || s.coord_precision === "town") return s.coord_precision;
+    if (!s.lat || !s.lng) return null;
+    const note = String(s.coord_note || "").toLowerCase();
+    if (!note) return null;
+    if (note.includes("town") || note.includes("locality") || note.includes("centroid")) return "town";
+    if (note.includes("approximate") || note.includes("geocoded")) return "approximate";
+    if (note.includes("coordinates embedded")) return "exact";
+    return null;
+  }
+  function precisionChip(s) {
+    const p = coordPrecision(s);
+    if (p === "exact") return `<span class="badge exact-pin">✓ Exact location</span>`;
+    if (p === "approximate") return `<span class="badge approx-pin">≈ Approximate location</span>`;
+    if (p === "town") return `<span class="badge area-pin">◉ Area pin</span>`;
+    return "";
+  }
+  function precisionNoteHtml(s) {
+    const p = coordPrecision(s);
+    if (p === "exact") return `<div class="precision-note exact"><span class="pn-ico">✓</span><div><b>Exact location</b>The pin marks this station's exact spot.</div></div>`;
+    if (p === "approximate") return `<div class="precision-note approx"><span class="pn-ico">≈</span><div><b>Approximate location</b>The pin is near this station, but the exact forecourt may be a short distance away — use the address and landmarks, and ask locally.</div></div>`;
+    if (p === "town") return `<div class="precision-note town"><span class="pn-ico">◉</span><div><b>Area pin — shows the neighbourhood, not the exact spot</b>This station is somewhere in this area; the pin is the town centre, not the station. Call ahead or ask locally for directions.</div></div>`;
+    return "";
+  }
   // Typical-fill estimate — ALWAYS labelled as an estimate from the national
   // price, never as that station's price.
   function fillEstimateHtml() {
@@ -207,32 +236,38 @@
   }
 
   // ---------------- honest statistics ----------------
-  function statRow(num, label, meaning) {
-    return `<tr><td>${num}</td><td><span class="lbl">${esc(label)}</span><br><span class="mean">${esc(meaning)}</span></td></tr>`;
+  function statTile(num, label, meaning, live) {
+    return `<div class="stat-tile${live ? " live" : ""}"><div class="num">${num}</div><div class="lbl">${esc(label)}</div><div class="mean">${esc(meaning)}</div></div>`;
   }
   function renderStats() {
     if (!stats) return;
-    const rows =
-      statRow(stats.total_records.toLocaleString(), "Directory records", stats.total_records_label) +
-      statRow(stats.refuelling_locations.toLocaleString(), "Refuelling locations", stats.refuelling_label) +
-      statRow(stats.conversion_centres.toLocaleString(), "Conversion centres", stats.conversion_label) +
-      statRow(stats.picng_register_matched.toLocaleString(), "Officially accredited", stats.picng_register_label) +
-      statRow(stats.picng_refuel_register_matched.toLocaleString(), "On the Pi-CNG refuelling register", stats.picng_refuel_register_label) +
-      statRow(stats.needs_reverification.toLocaleString(), "Need re-verification", stats.needs_reverification_label) +
-      statRow(stats.states_with_data + " / 37", "States + FCT with data", stats.states_with_data_label) +
-      statRow(stats.with_coordinates.toLocaleString(), "With coordinates", stats.with_coordinates_label);
+    const tiles =
+      statTile(stats.total_records.toLocaleString(), "Directory records", stats.total_records_label) +
+      statTile(stats.refuelling_locations.toLocaleString(), "Refuelling locations", stats.refuelling_label) +
+      statTile(stats.conversion_centres.toLocaleString(), "Conversion centres", stats.conversion_label) +
+      statTile(stats.picng_register_matched.toLocaleString(), "Officially accredited", stats.picng_register_label) +
+      statTile(stats.picng_refuel_register_matched.toLocaleString(), "On the Pi-CNG refuelling register", stats.picng_refuel_register_label) +
+      statTile(stats.needs_reverification.toLocaleString(), "Need re-verification", stats.needs_reverification_label) +
+      statTile(stats.states_with_data + " / 37", "States + FCT with data", stats.states_with_data_label) +
+      statTile(stats.with_coordinates.toLocaleString(), "With coordinates", stats.with_coordinates_label);
     const live = runtimeCounts
-      ? statRow(runtimeCounts.verified.toLocaleString(), "Independently verified (live)", "Centres registered here that passed human verification.") +
-        statRow(runtimeCounts.pending.toLocaleString(), "Pending verification (live)", "Submissions awaiting review — not listed publicly until approved.")
+      ? statTile(runtimeCounts.verified.toLocaleString(), "Independently verified (live)", "Centres registered here that passed human verification.", true) +
+        statTile(runtimeCounts.pending.toLocaleString(), "Pending verification (live)", "Submissions awaiting review — not listed publicly until approved.", true)
       : runtimeCountsFailed
-      ? `<tr><td>—</td><td><span class="lbl">Independently verified / pending (live)</span><br><span class="mean">Live counts could not be reached — check your connection.</span></td></tr>`
-      : `<tr><td>—</td><td><span class="lbl">Independently verified / pending (live)</span><br><span class="mean">Loading live counts…</span></td></tr>`;
-    const table = `<table class="stats-table">${rows}${live}</table>` +
+      ? statTile("—", "Independently verified / pending (live)", "Live counts could not be reached — check your connection.")
+      : statTile("—", "Independently verified / pending (live)", "Loading live counts…");
+    const grid = `<div class="stat-grid">${tiles}${live}</div>` +
       `<p class="tiny" style="margin:8px 0 0">Directory numbers computed from the dataset on ${esc(stats.generated)}. Live counts come from the verification queue right now.</p>`;
     const home = $("home-stats");
-    if (home) home.innerHTML = table;
+    if (home) home.innerHTML = grid;
     const about = $("about-stats");
-    if (about) about.innerHTML = table;
+    if (about) about.innerHTML = grid;
+    // Hero stats — same source, three headline numbers.
+    const hero = $("hero-stats");
+    if (hero) hero.innerHTML =
+      `<div class="hero-stat"><b>${stats.total_records.toLocaleString()}</b><span>stations &amp; centres</span></div>` +
+      `<div class="hero-stat"><b>${stats.states_with_data} / 37</b><span>states + FCT</span></div>` +
+      `<div class="hero-stat"><b>${stats.with_coordinates.toLocaleString()}</b><span>on the map</span></div>`;
     const lede = $("stations-lede");
     if (lede) lede.textContent = `Every CNG refuelling station and conversion centre in the dataset — ${stats.total_records} entries across ${stats.states_with_data} states. Search by name, town or operator.`;
     const nodata = $("nodata-note");
@@ -325,19 +360,27 @@
   function filteredForMap() {
     return stations.filter((s) => s.lat && s.lng && passesFilters(s));
   }
-  function markerIcon(st, type) {
+  function markerIcon(st, type, precision) {
     const letter = type === "refuelling" ? "R" : type === "conversion" ? "C" : "B";
+    // Town pins are dashed circles, never precise teardrops; approximate
+    // pins carry a dashed halo. Exact pins are the plain teardrop.
+    const pCls = precision === "town" ? " town" : precision === "approximate" ? " approx" : "";
     return L.divIcon({
       className: "",
-      html: `<div class="marker-pin ${st}"><b>${letter}</b></div>`,
-      iconSize: [26, 26], iconAnchor: [13, 25], popupAnchor: [0, -24],
+      html: `<div class="marker-pin ${st}${pCls}"><b>${letter}</b></div>`,
+      iconSize: [28, 28],
+      iconAnchor: precision === "town" ? [14, 14] : [14, 27],
+      popupAnchor: [0, -24],
     });
   }
   function popupHtml(s) {
     const st = statusOf(s.id);
     const d = (userLoc && s.lat && s.lng) ? ` · ${fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng))} away` : "";
+    const prec = coordPrecision(s);
+    const precLine = prec === "town" ? `<br><span class="badge area-pin">◉ Area pin — neighbourhood, not exact spot</span>`
+      : prec === "approximate" ? `<br><span class="small">≈ Approximate location — near this spot, not exact</span>` : "";
     return `<b>${esc(s.name)}</b><br>${esc(s.address || "")}<br>${esc(s.city || "")}, ${esc(s.state)}${d}<br>` +
-      `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}<br>` +
+      `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}${precLine}<br>` +
       `<button class="btn small" style="margin-top:8px" onclick="openStation('${s.id}')">Details &amp; report</button>`;
   }
   // Lightweight grid clustering (plain JS, no library): group markers into
@@ -349,7 +392,7 @@
     const zoom = map.getZoom();
     if (zoom >= 14) {
       visible.forEach((s) => {
-        L.marker([s.lat, s.lng], { icon: markerIcon(statusOf(s.id), s.type) })
+        L.marker([s.lat, s.lng], { icon: markerIcon(statusOf(s.id), s.type, coordPrecision(s)) })
           .bindPopup(popupHtml(s)).addTo(clusterLayer);
       });
       updateViewStats(visible);
@@ -365,7 +408,7 @@
     cells.forEach((list) => {
       if (list.length === 1) {
         const s = list[0];
-        L.marker([s.lat, s.lng], { icon: markerIcon(statusOf(s.id), s.type) })
+        L.marker([s.lat, s.lng], { icon: markerIcon(statusOf(s.id), s.type, coordPrecision(s)) })
           .bindPopup(popupHtml(s)).addTo(clusterLayer);
         return;
       }
@@ -471,11 +514,11 @@
       return;
     }
     box.innerHTML = `<h3>Nearest mapped stations</h3>` + near.map(({ s, d }) =>
-      `<div class="card station" data-id="${s.id}" style="display:flex;gap:10px;align-items:center">` +
+      `<div class="card station st-${statusOf(s.id)}" data-id="${s.id}" style="display:flex;gap:10px;align-items:center">` +
       etaRing(d * 1.5) +
       `<div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3>` +
-      `<p class="meta">${esc(s.address || "")} · ${esc(s.city || "")}, ${esc(s.state)} · <b>${fmtKm(d)}</b></p>` +
-      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)}</div></div></div>`
+      `<p class="meta">${esc(s.address || "")} · ${esc(s.city || "")}, ${esc(s.state)} · <span class="dist-chip">${fmtKm(d)}</span></p>` +
+      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)}${coordPrecision(s) === "town" ? " " + precisionChip(s) : ""}</div></div></div>`
     ).join("") +
     `<p class="tiny">Drive times are rough estimates (about 40 km/h) — traffic and road conditions change them.</p>`;
     box.querySelectorAll(".station").forEach((el) =>
@@ -569,13 +612,15 @@
     return list;
   }
   function stationCard(s) {
-    const d = (userLoc && s.lat && s.lng) ? ` · <b>${fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng))}</b>` : "";
+    const d = (userLoc && s.lat && s.lng) ? ` · <span class="dist-chip">${fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng))}</span>` : "";
     const noc = (!s.lat) ? `<span class="tiny"> · Map position not recorded yet</span>` : "";
     const fav = favs.has(s.id) ? "★" : "☆";
-    return `<div class="card station" data-id="${s.id}"><h3>${esc(s.name)} <button class="fav-btn" style="float:right;min-height:36px;padding:4px 10px" data-fav="${s.id}" aria-label="Favourite">${fav}</button></h3>` +
+    const st = statusOf(s.id);
+    const precChip = coordPrecision(s) === "town" ? " " + precisionChip(s) : "";
+    return `<div class="card station st-${st}" data-id="${s.id}"><h3>${esc(s.name)} <button class="fav-btn" data-fav="${s.id}" aria-label="Favourite">${fav}</button></h3>` +
       `<p class="meta">${esc(s.address || "")}</p>` +
       `<p class="meta">${esc(s.city || "")}, ${esc(s.state)}${d}${noc}</p>` +
-      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}</div></div>`;
+      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}</div></div>`;
   }
   function bindCards(box) {
     box.querySelectorAll(".station").forEach((el) =>
@@ -750,7 +795,21 @@
     const r = reports.get(id);
     const fav = favs.has(id) ? "★ Saved" : "☆ Save";
     const wa = s.phone ? normalizeNgPhone(s.phone) : null;
-    const d = (userLoc && s.lat && s.lng) ? `<p class="meta">📍 <b>${fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng))}</b> from your spot</p>` : "";
+    const distText = (userLoc && s.lat && s.lng) ? fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng)) : null;
+    // Photo hero (2.1 contract): entry.photo = {url, attribution} when a
+    // real photo of that place exists. When absent there is NO placeholder
+    // image — the clean typographic band is the design, not a gap.
+    const photo = s.photo && s.photo.url ? s.photo : null;
+    const precChip = precisionChip(s);
+    const heroBody =
+      `<div class="detail-hero-body"><h2>${esc(s.name)}</h2>` +
+      `<div class="row">${statusBadge(id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${s.category ? ` <span class="badge type">${esc(s.category)}</span>` : ""}${precChip ? " " + precChip : ""}</div>` +
+      `<p class="hero-addr">${esc(s.address || "")}<br>${esc(s.city || "")}, ${esc(s.state)}${s.postcode ? " · Postcode " + esc(s.postcode) : ""}</p>` +
+      (distText ? `<p class="hero-dist">📍 ${distText} from your spot</p>` : "") +
+      `</div>`;
+    const hero = photo
+      ? `<div class="detail-hero photo"><div class="detail-photo-wrap"><img src="${esc(photo.url)}" alt="Photo of ${esc(s.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.closest('.detail-hero').classList.remove('photo');this.closest('.detail-photo-wrap').remove()">${photo.attribution ? `<span class="photo-credit">Photo: ${esc(photo.attribution)}</span>` : ""}</div>${heroBody}</div>`
+      : `<div class="detail-hero">${heroBody}</div>`;
     let statusBlock;
     if (!reportsLive) {
       statusBlock = `<div class="notice">Live reports could not be reached — check your connection and reload. The listing below is still accurate.</div>`;
@@ -766,12 +825,8 @@
     } else {
       statusBlock = `<p class="small">No gas report in the last 2 hours. ${s.type === "conversion" ? "Conversion centres don't sell gas — but you can still report whether the centre is open." : "Be the first to report it."}</p>`;
     }
-    box.innerHTML =
-      `<h2>${esc(s.name)}</h2>` +
-      `<div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${statusBadge(id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${s.category ? `<span class="badge type">${esc(s.category)}</span>` : ""}</div>` +
-      `<p style="margin:12px 0 4px">${esc(s.address || "")}<br>${esc(s.city || "")}, ${esc(s.state)}${s.postcode ? " · Postcode " + esc(s.postcode) : ""}</p>` +
-      d +
-      (s.coord_note ? `<p class="small">📍 Map position: ${esc(s.coord_note)}</p>` : "") +
+    box.innerHTML = hero + precisionNoteHtml(s) +
+      (s.coord_note && !coordPrecision(s) ? `<p class="small">📍 Map position: ${esc(s.coord_note)}</p>` : "") +
       `<div class="detail-actions">` +
         `<a class="btn" href="${directionsUrl(s)}" target="_blank" rel="noopener">🧭 Directions</a>` +
         (s.phone ? `<a class="btn outline" href="tel:${esc(s.phone)}">📞 Call</a>` : "") +
@@ -1214,7 +1269,7 @@
     }
     const stops = st.fallback ? st.stops : (st.stopsByRoute[idx] ? st.stopsByRoute[idx].stops : []);
     (stops || []).forEach((c) => {
-      L.marker([c.s.lat, c.s.lng], { icon: markerIcon(statusOf(c.s.id), c.s.type) })
+      L.marker([c.s.lat, c.s.lng], { icon: markerIcon(statusOf(c.s.id), c.s.type, coordPrecision(c.s)) })
         .bindPopup(popupHtml(c.s)).addTo(routeLayer);
     });
     [st.from, st.to].forEach((p, i) => {
@@ -1328,7 +1383,7 @@
       `<div class="calc-row"><span>Distance / month</span><b>${kmMonth.toLocaleString()} km</b></div>` +
       `<div class="calc-row"><span>Petrol needed</span><b>${litres.toFixed(0)} litres</b></div>` +
       `<div class="calc-row"><span>CNG needed</span><b>${scm.toFixed(0)} SCM</b></div>` +
-      `<div class="calc-row"><span>Conversion pays for itself in</span><b>${payback}</b></div>` +
+      `<div class="calc-row payback"><span>Conversion pays for itself in</span><b>${payback}</b></div>` +
       `</div><p class="small">${cost > 0 ? "Payback uses the conversion cost you entered (" + naira(cost) + "). " : esc(v.convLabel) + " "}Drivers report saving 50–75% on fuel in real life. ` +
       `This is fuel cost only — it does not count time spent queuing or extra plug/coil maintenance. ` +
       `1 SCM of CNG ≈ the energy of ~1.1 litres of petrol (estimate).</p>`;

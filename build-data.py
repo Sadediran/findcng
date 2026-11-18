@@ -99,6 +99,12 @@ for e in master:
         entry["category"] = e["category"]    # Mother | Daughter | Retail | Online ...
     if e.get("coord_note"):
         entry["coord_note"] = e["coord_note"]
+    if e.get("coord_precision"):
+        entry["coord_precision"] = e["coord_precision"]  # exact | approximate | town
+    if e.get("coord_source"):
+        entry["coord_source"] = e["coord_source"]  # places:<id> | nominatim | map.geocode | ...
+    if e.get("photo"):
+        entry["photo"] = e["photo"]  # {url, attribution} -- verified by a later workstream
     if e.get("hours"):
         entry["hours"] = e["hours"]          # string or {day: "06:00–22:00"}
     if e.get("services"):
@@ -113,6 +119,9 @@ for e in master:
     json.dumps(stations, ensure_ascii=False, separators=(",", ":")))
 print("stations.json:", len(stations), "entries,",
       sum(1 for s in stations if s["lat"]), "with coords,",
+      sum(1 for s in stations if s.get("coord_precision") == "exact"), "exact,",
+      sum(1 for s in stations if s.get("coord_precision") == "approximate"), "approximate,",
+      sum(1 for s in stations if s.get("coord_precision") == "town"), "town,",
       sum(1 for s in stations if s["acc"]), "accredited,",
       sum(1 for s in stations if s.get("category")), "with category,",
       sum(1 for s in stations if s.get("hours")), "with hours,",
@@ -146,6 +155,9 @@ stats = {
     "no_data_states": no_data_states,
     "with_coordinates": sum(1 for s in stations if s["lat"]),
     "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
+    "coord_precision": {p: sum(1 for s in stations if s.get("coord_precision") == p)
+                        for p in ("exact", "approximate", "town")},
+    "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
     "with_phone": sum(1 for s in stations if s.get("phone")),
     "operators": [{"name": n, "count": c} for n, c in operators.most_common(12)],
     "categories": [{"name": n, "count": c} for n, c in sorted(categories.items())],

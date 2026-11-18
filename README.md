@@ -3,7 +3,7 @@
 **Find gas near you — live availability, verified centres, nationwide.**
 
 A live, mobile-first web app for finding CNG refuelling stations and verified
-conversion centres across Nigeria. Built by Saheed, a serving NYSC corps
+conversion centres across Nigeria. Built by ED/26B/2316, a serving NYSC corps
 member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 300), as his Community Development Service (CDS) project.
 
@@ -24,6 +24,24 @@ Stack: plain HTML/CSS/JS (no framework), Leaflet + OpenStreetMap (Leaflet 1.9.4
 vendored in `js/`/`css/` — no CDN dependency, so the map works offline once
 cached; CARTO dark tiles as an option), Vercel serverless functions, Supabase (free tier) for reports +
 submissions + confirmations + listing reports + certificate storage. Running cost ~₦0/month on free tiers.
+
+## 2.1 redesign (Nov 2026)
+
+Visual redesign, same features: gradient hero with live headline stats (from
+`data/stats.json`, never hardcoded), layered search card, status-railed
+station cards, stat-tile coverage grid, SVG bottom-nav icons, and a rebuilt
+station detail page. New data contracts supported defensively (the fields do
+not exist in the dataset yet — the UI degrades cleanly without them):
+
+- `entry.photo = { url, attribution }` — a real photo of the place shows as a
+  photo hero on the detail page with an attribution chip; when absent there is
+  no placeholder image at all, just the clean typographic band.
+- `entry.coord_precision = "exact" | "approximate" | "town"` — town-level pins
+  are locality centroids, not exact spots: dashed-circle map pins, an
+  “Area pin” badge, and a plain-language note on the detail page. Approximate
+  pins get a dashed halo + note; exact pins get a confirmation chip. Entries
+  without the field fall back to inferring from `coord_note` (and say nothing
+  when nothing is known).
 
 ## Deploy
 
@@ -99,7 +117,7 @@ Edit `js/data.js` — `FINDCNG.PRICES` (CNG ₦/SCM, petrol ₦/litre) and
 `priceDate`. The calculator reads from there. Prices as reported Sep–Nov 2026;
 re-check before any demo. Then redeploy.
 
-## How to moderate (Saheed)
+## How to moderate (ED/26B/2316)
 
 1. Open `<site>/admin.html`, enter the moderator passcode. (There is no link
    to the moderator page anywhere in the app — it is reachable only by direct
