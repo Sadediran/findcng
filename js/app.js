@@ -1303,7 +1303,26 @@
     calc();
     // Offline cache (app shell + station list; API calls are never cached).
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      // When a new service worker takes over, refresh once so the page
+      // shows the new release instead of the old cached shell — but
+      // only if this page already had a controller when it loaded, so
+      // first visits (no controller yet) do not reload. (18 Nov 2026:
+      // Saheed kept seeing the previous release's data because the page
+      // rendered from the old cache before the new worker activated.)
+      var hadController = !!navigator.serviceWorker.controller;
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (hadController && !refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+      navigator.serviceWorker.register("sw.js").then(function (reg) {
+        // Force an update check on load too: a tab restored from the
+        // back-forward cache is not a navigation, so the browser would
+        // otherwise not check for a new worker until the next visit.
+        if (reg) reg.update().catch(function () {});
+      }).catch(function () {});
     }
     // Load data after first paint
     requestAnimationFrame(() => {
