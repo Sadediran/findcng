@@ -16,7 +16,7 @@
 import { json } from "./_lib.js";
 
 const BASE = (process.env.NIPOST_API_BASE || "https://api.postcode.gov.ng").replace(/\/$/, "");
-const KEY = process.env.NIPOST_API_KEY || "";
+const KEY = (process.env.NIPOST_API_KEY || "").trim();
 
 async function nipost(path) {
   const r = await fetch(`${BASE}${path}`, {
