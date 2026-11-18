@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.1"; // bumped 18 Nov 2026 — refuelling pin verification run 2 applied (31 pins approximate → exact, CNG-004 newly tagged, CNG-008 moved to the entrance listing's pin; 465 on the map, 53 exact)
+const CACHE = "findcng-v2.4.2"; // bumped 18 Nov 2026 — refuelling gap batch: CNG-717 Rolling Energy Tamburawa newly tagged (466 on the map); all 134 refuelling stations now verified
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

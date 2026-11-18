@@ -25,11 +25,11 @@
   "Yobe",
   "Zamfara"
  ],
- "with_coordinates": 465,
+ "with_coordinates": 466,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
   "exact": 53,
-  "approximate": 329,
+  "approximate": 330,
   "town": 83
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
