@@ -29,9 +29,9 @@
  "with_coordinates": 440,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
-  "exact": 8,
-  "approximate": 343,
-  "town": 89
+  "exact": 10,
+  "approximate": 344,
+  "town": 86
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
  "with_phone": 18,

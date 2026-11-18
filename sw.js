@@ -5,7 +5,7 @@
    returning visitor keeps the old shell until the service worker file
    itself changes. (18 Nov 2026: 2.3 shipped without a bump and Saheed's
    phone showed no updates at all until the tab was closed and reopened.) */
-const CACHE = "findcng-v2.3.2"; // bumped 18 Nov 2026 for the OSM pin-matching data release (7 pins refined, 1 newly tagged)
+const CACHE = "findcng-v2.3.3"; // bumped 18 Nov 2026 for the OSM pin-matching data release (7 pins refined, 1 newly tagged)
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
