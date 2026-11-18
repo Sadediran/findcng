@@ -28,7 +28,10 @@ const MAX_QUESTION = 500;
 const MAX_OUTPUT_TOKENS = 400;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
 const SEARCH_TIMEOUT_MS = 5000;
-const GEMINI_TIMEOUT_MS = 25000;
+// 18 Nov 2026: gemini-3.8-flash is slower than 2.5-flash was — the first
+// live call exceeded the old 25s limit, so the timeout is 45s (the
+// function itself is capped at 60s in vercel.json).
+const GEMINI_TIMEOUT_MS = 45000;
 
 // --- Knowledge base + station names (loaded once per instance) ----------
 let knowledgeText = null; // null = not tried yet; "" = failed to load
