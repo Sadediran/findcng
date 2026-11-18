@@ -50,10 +50,11 @@ def check_news_feed():
     must pass in BOTH live mode (news_items table exists) and
     static-fallback mode (table missing; the 9 saved seed items).
     Read-only: zero lasting pollution."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     def ts(iso):
         try:
-            return datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+            d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+            return d if d.tzinfo is not None else d.replace(tzinfo=timezone.utc)
         except Exception:
             return None
     s, r = call("GET", BASE + "/api/news")
