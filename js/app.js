@@ -1,6 +1,9 @@
 /* FindCNG Nigeria — 2.0 app logic. Plain JS, no framework.
    Data: data/stations.json + data/stats.json (build-time, computed from the
-   master dataset — never hardcoded).
+   master dataset — never hardcoded), plus live centres from
+   /api/live-centres (2.6): centres on the live Pi-CNG register that are
+   not yet in the stored snapshot, shown with a New badge, list-only
+   until the daily pipeline verifies a pin.
    Reports: /api/reports (Supabase). NO demo mode: if the backend is
    unreachable the app says so honestly and saves nothing locally — a report
    the user thinks is shared must actually be shared. */
@@ -18,6 +21,10 @@
 
   // ---------------- state ----------------
   let stations = [];            // all entries from data/stations.json
+  let liveCentres = [];         // centres on the live Pi-CNG register but not yet in the stored snapshot (2.6)
+  let liveState = "pending";    // pending | ok | unavailable
+  let liveFetchedAt = null;     // Date of the last successful live fetch
+  let liveLoading = false;      // a live fetch is in flight
   let stats = null;             // data/stats.json (build-time, computed)
   let dataLoaded = false;
   let reports = new Map();      // stationId -> latest fresh report {id,status,queue,pressure,compressor,ts}
@@ -50,6 +57,10 @@
     return 2 * R * Math.asin(Math.sqrt(h));
   }
   function fmtKm(km) { return km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km"; }
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  }
   function timeAgo(ts) {
     const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     if (s < 60) return "just now";
@@ -82,6 +93,11 @@
   // describe the DATASET (Pi-CNG register match / stale 2024 list), not a
   // submission: centre self-registration was removed in 2.5 (18 Nov 2026).
   function verifyBadge(s) {
+    if (s.live) {
+      return s.liveStatus === "active"
+        ? `<span class="badge acc">✓ Officially accredited · live Pi-CNG register</span>`
+        : `<span class="badge unver">Registered on Pi-CNG — not yet Active</span>`;
+    }
     if (s.acc) {
       return `<span class="badge acc">✓ Officially accredited · Pi-CNG register ${F.REGISTER_DATES.centres}</span>`;
     }
@@ -211,10 +227,101 @@
         renderNearest();
         renderMapCount();
         handleDeepLink();
+        loadLiveCentres(); // non-blocking: newly listed centres join the lists when they arrive
       })
       .catch(() => {
         $("map-count").textContent = "Could not load the station list. Check your connection and reload.";
       });
+  }
+  // ---------------- live centres (2.6) ----------------
+  // The stored snapshot is rebuilt daily; /api/live-centres reads the
+  // Pi-CNG register live so centres listed since the last rebuild show
+  // up within the hour (Saheed, 18 Nov 2026: the directory must display
+  // live, not stored alone). Live centres are list-only — the API's
+  // coordinates are unusable (mostly (0,0) or 2-decimal) — until the
+  // daily pipeline verifies a pin. Matching is by picng_id where the
+  // stored entry carries it, else by normalised name + state. A failed
+  // fetch leaves the stored list untouched: the directory never depends
+  // on the live register.
+  function allStations() { return stations.concat(liveCentres); }
+  function findStation(id) {
+    return stations.find((x) => x.id === id) || liveCentres.find((x) => x.id === id) || null;
+  }
+  function loadLiveCentres() {
+    if (liveLoading) return Promise.resolve();
+    liveLoading = true;
+    return fetch("/api/live-centres")
+      .then((r) => r.json())
+      .then((j) => {
+        liveLoading = false;
+        if (!j || !j.ok || !Array.isArray(j.rows)) { liveState = "unavailable"; renderLiveNote(); return; }
+        const byPicng = new Map();
+        const byNameState = new Set();
+        stations.forEach((s) => {
+          if (s.picng_id != null) byPicng.set(s.picng_id, true);
+          byNameState.add(normName(s.name) + "|" + String(s.state || "").toLowerCase());
+        });
+        liveCentres = j.rows
+          .filter((r) => {
+            if (r.id != null && byPicng.has(r.id)) return false;
+            if (byNameState.has(normName(r.name) + "|" + String(r.state || "").toLowerCase())) return false;
+            return r.name && r.state; // an entry needs at least a name + state
+          })
+          .map((r) => ({
+            id: "LIVE-" + r.id,
+            picng_id: r.id,
+            name: r.name,
+            type: "conversion",
+            operator: null,
+            address: r.address || null,
+            city: r.lga || null, // the API has no city field; the LGA is the locality
+            state: r.state,
+            zone: null,
+            postcode: null,
+            lat: null,
+            lng: null,
+            phone: null,
+            confidence: null,
+            acc: r.status === true,
+            refReg: false,
+            src: "Pi-CNG live register",
+            live: true,
+            liveStatus: r.status === true ? "active" : "registered",
+            liveListedAt: r.createdAt || null,
+          }))
+          .sort((a, b) => (Date.parse(b.liveListedAt || "") || 0) - (Date.parse(a.liveListedAt || "") || 0));
+        liveState = "ok";
+        liveFetchedAt = new Date();
+        renderLiveNote();
+        populateStateFilters(); // a live centre can add a state to the filter
+        renderStations();
+        renderCentres();
+        renderNearest();
+        // A ?station=LIVE-… deep link could only resolve once the live
+        // data arrived; re-run the deep link now.
+        if (!currentStation) handleDeepLink();
+      })
+      .catch(() => {
+        liveLoading = false;
+        liveState = "unavailable";
+        renderLiveNote();
+      });
+  }
+  function renderLiveNote() {
+    const when = liveFetchedAt
+      ? liveFetchedAt.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })
+      : "";
+    const text = liveState === "ok"
+      ? (liveCentres.length
+          ? `● Live · ${liveCentres.length} newly listed centre${liveCentres.length > 1 ? "s" : ""} from the Pi-CNG register (checked ${when}) — shown with a New badge; map pins appear after verification.`
+          : `● Live · Pi-CNG register checked ${when} — no centres listed since the last daily update.`)
+      : liveState === "unavailable"
+        ? "Live register could not be reached — showing the stored list from the last daily update."
+        : "Checking the live Pi-CNG register for newly listed centres…";
+    ["live-note", "live-note-centres"].forEach((id) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    });
   }
   // ---------------- honest statistics ----------------
   function statTile(num, label, meaning, live) {
@@ -525,6 +632,7 @@
     $("loc-status").textContent = "Your spot: " + label + " (" + lat.toFixed(4) + ", " + lng.toFixed(4) + ")";
     renderNearest();
     renderStations();
+    loadLiveCentres(); // a near-me search refreshes the live register, so newly listed centres are captured at search time (2.6)
   }
   function etaRing(mins) {
     const cls = mins < 15 ? "" : mins < 30 ? "amber" : "red";
@@ -555,6 +663,21 @@
       `<p class="meta">${esc(s.address || "")} · ${esc(locLabel(s))} · <span class="dist-chip">${fmtKm(d)}</span></p>` +
       `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)}${coordPrecision(s) === "town" ? " " + precisionChip(s) : ""}</div></div></div>`
     ).join("") +
+    // Live centres have no coordinates, so they cannot be ranked by
+    // distance — but a near-me search still surfaces the ones just
+    // listed in the same state as the nearest result (2.6).
+    (() => {
+      const nearState = near.length ? near[0].s.state : null;
+      const fresh = nearState ? liveCentres.filter((s) => s.state === nearState).slice(0, 3) : [];
+      if (!fresh.length) return "";
+      return `<h3 style="margin-top:18px">Newly listed in ${esc(nearState)}</h3>` +
+        `<p class="small">Just appeared on the live Pi-CNG register — no map pin yet, so they can't be ranked by distance.</p>` +
+        fresh.map((s) =>
+          `<div class="card station" data-id="${s.id}"><h3>${esc(s.name)}</h3>` +
+          `<p class="meta">${esc(s.address || "")} · ${esc(locLabel(s))}</p>` +
+          `<div class="row">${typeBadge(s.type)} ${verifyBadge(s)} <span class="badge live-new">🆕 New — just listed</span></div></div>`
+        ).join("");
+    })() +
     `<p class="tiny">Drive times are rough estimates (about 40 km/h) — traffic and road conditions change them.</p>`;
     box.querySelectorAll(".station").forEach((el) =>
       el.addEventListener("click", () => openStation(el.dataset.id)));
@@ -612,13 +735,14 @@
 
   // ---------------- station list ----------------
   function populateStateFilters() {
-    const states = [...new Set(stations.map((s) => s.state))].sort();
+    const all = allStations();
+    const states = [...new Set(all.map((s) => s.state))].sort();
     ["state-filter", "centre-state-filter"].forEach((id) => {
       const sel = $(id);
       if (!sel) return;
       const cur = sel.value;
       sel.innerHTML = `<option value="">All states (${states.length})</option>` +
-        states.map((s) => `<option value="${esc(s)}">${esc(s)} (${stations.filter((x) => x.state === s).length})</option>`).join("");
+        states.map((s) => `<option value="${esc(s)}">${esc(s)} (${all.filter((x) => x.state === s).length})</option>`).join("");
       sel.value = cur;
     });
   }
@@ -626,7 +750,7 @@
     const q = ($("station-search").value || "").trim().toLowerCase();
     const st = $("state-filter").value;
     const ty = document.querySelector(".chip[data-type].on")?.dataset.type || "";
-    let list = stations.filter((s) => {
+    let list = allStations().filter((s) => {
       if (st && s.state !== st) return false;
       if (ty && s.type !== ty) return false;
       if (sortMode === "favs" && !favs.has(s.id)) return false;
@@ -649,13 +773,16 @@
   function stationCard(s) {
     const d = (userLoc && s.lat && s.lng) ? ` · <span class="dist-chip">${fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng))}</span>` : "";
     const noc = (!s.lat) ? `<span class="tiny"> · Map position not recorded yet</span>` : "";
-    const fav = favs.has(s.id) ? "★" : "☆";
+    // Live entries have no favourite button: a LIVE- id would not survive
+    // the daily merge, so a saved favourite would point at nothing.
+    const favBtn = s.live ? "" : `<button class="fav-btn" data-fav="${s.id}" aria-label="Favourite">${favs.has(s.id) ? "★" : "☆"}</button>`;
     const st = statusOf(s.id);
     const precChip = coordPrecision(s) === "town" ? " " + precisionChip(s) : "";
-    return `<div class="card station st-${st}" data-id="${s.id}"><h3>${esc(s.name)} <button class="fav-btn" data-fav="${s.id}" aria-label="Favourite">${fav}</button></h3>` +
+    const liveBadge = s.live ? ` <span class="badge live-new">🆕 New — just listed</span>` : "";
+    return `<div class="card station st-${st}" data-id="${s.id}"><h3>${esc(s.name)} ${favBtn}</h3>` +
       `<p class="meta">${esc(s.address || "")}</p>` +
       `<p class="meta">${esc(locLabel(s))}${d}${noc}</p>` +
-      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}</div></div>`;
+      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}${liveBadge}</div></div>`;
   }
   function bindCards(box) {
     box.querySelectorAll(".station").forEach((el) =>
@@ -674,7 +801,7 @@
     if (!dataLoaded) return;
     const list = filteredStations();
     const box = $("station-results");
-    $("station-count").textContent = list.length + " of " + stations.length + " entries" +
+    $("station-count").textContent = list.length + " of " + allStations().length + " entries" +
       (sortMode === "favs" ? " · your favourites" : userLoc ? " · sorted by distance from your spot" : " · set your location to sort by distance");
     // State landing summary — genuinely useful content for ?state= pages.
     let summaryHtml = "";
@@ -749,7 +876,7 @@
       return;
     }
     const nq = normName(q);
-    const hits = stations.filter((s) => s.acc && normName(s.name).includes(nq)).slice(0, 8);
+    const hits = allStations().filter((s) => s.acc && normName(s.name).includes(nq)).slice(0, 8);
     if (hits.length) {
       const all = hits;
       box.innerHTML = `<div class="notice ok"><b>✓ Found — ${all.length} match${all.length > 1 ? "es" : ""}:</b></div>` +
@@ -767,13 +894,13 @@
     if (!dataLoaded) return;
     const q = ($("centre-search").value || "").trim().toLowerCase();
     const st = $("centre-state-filter").value;
-    let list = stations.filter((s) => s.type !== "refuelling");
+    let list = allStations().filter((s) => s.type !== "refuelling");
     if (st) list = list.filter((s) => s.state === st);
     if (q) list = list.filter((s) => (`${s.name} ${s.address || ""} ${s.city || ""} ${s.state}`).toLowerCase().includes(q));
     list.sort((a, b) => (a.state + a.name).localeCompare(b.state + b.name));
     const box = $("centre-results");
     $("centre-count").textContent = list.length + " conversion centres" +
-      (st ? " in " + st : " nationwide") + " · " + stations.filter((s) => s.acc).length + " on the Pi-CNG accredited list";
+      (st ? " in " + st : " nationwide") + " · " + allStations().filter((s) => s.acc).length + " on the Pi-CNG accredited list";
     if (!list.length) {
       box.innerHTML = `<div class="empty"><p><b>No centres match.</b></p><p>Try another state or spelling.</p></div>`;
       $("centre-more").classList.add("hidden");
@@ -792,7 +919,7 @@
   // Hours/services/phone/price appear ONLY where the data has them — never
   // invented; honest "not listed" states otherwise.
   function openStation(id) {
-    const s = stations.find((x) => x.id === id);
+    const s = findStation(id);
     if (!s) return;
     currentStation = id;
     renderDetail(id);
@@ -822,7 +949,7 @@
       fillEstimateHtml();
   }
   function renderDetail(id) {
-    const s = stations.find((x) => x.id === id);
+    const s = findStation(id);
     if (!s) return;
     const box = $("station-detail");
     const st = statusOf(id);
@@ -867,26 +994,34 @@
         (wa ? `<a class="btn outline" href="https://wa.me/${wa}" target="_blank" rel="noopener">💬 Chat (WhatsApp)</a>` : "") +
       `</div>` +
       (!s.phone ? `<p class="small">No phone number listed for this entry.</p>` : "") +
-      `<div class="card">${statusBlock}` +
-      `<button class="btn" onclick="openReport('${s.id}')">Report gas status here</button>` +
-      ((st === "finished" || st === "closed" || st === "low")
-        ? `<button class="btn yellow" style="margin-top:8px" onclick="backToNormal('${s.id}')">✅ Back to normal — gas is back</button>` : "") +
-      `</div>` +
+      // Live entries (2.6): no gas report, no reliability history, no
+      // favourite and no listing-report buttons — a LIVE- id would not
+      // survive the daily merge, so anything filed against it would be
+      // orphaned. They get a just-listed notice instead.
+      (s.live
+        ? `<div class="card"><p><b>🆕 Just listed on the Pi-CNG register${s.liveListedAt ? " — " + fmtDate(s.liveListedAt) : ""}.</b></p>` +
+          `<p class="small">This centre appeared on the live register after the last daily update. Its map pin, opening hours and reports appear once the daily check verifies it — usually within a day. The address above is what the register lists.</p></div>`
+        : `<div class="card">${statusBlock}` +
+          `<button class="btn" onclick="openReport('${s.id}')">Report gas status here</button>` +
+          ((st === "finished" || st === "closed" || st === "low")
+            ? `<button class="btn yellow" style="margin-top:8px" onclick="backToNormal('${s.id}')">✅ Back to normal — gas is back</button>` : "") +
+          `</div>`) +
       `<div class="card"><h3 style="margin-top:0">Opening hours</h3>${hoursHtml(s)}</div>` +
       `<div class="card"><h3 style="margin-top:0">Services</h3>${servicesHtml(s)}</div>` +
       `<div class="card"><h3 style="margin-top:0">Price</h3>${priceHtml(s)}</div>` +
-      `<div class="card"><h3 style="margin-top:0">Reliability — last 30 days</h3><div id="reliability-box"><p class="small">Loading report history…</p></div></div>` +
+      (s.live ? "" : `<div class="card"><h3 style="margin-top:0">Reliability — last 30 days</h3><div id="reliability-box"><p class="small">Loading report history…</p></div></div>`) +
       `<div class="detail-actions">` +
-        `<button class="fav-btn ${favs.has(id) ? "on" : ""}" id="detail-fav">${fav}</button>` +
+        (s.live ? "" : `<button class="fav-btn ${favs.has(id) ? "on" : ""}" id="detail-fav">${fav}</button>`) +
         `<button class="btn outline small" id="detail-share">🔗 Copy link</button>` +
       `</div>` +
-      `<div class="detail-actions">` +
+      (s.live ? "" : `<div class="detail-actions">` +
         `<button class="btn outline small" onclick="openListing('${s.id}','incorrect')">⚠️ Report an incorrect listing</button>` +
         `<button class="btn outline small" onclick="openListing('${s.id}','closed')">⛔ Report a closure</button>` +
-      `</div>` +
-      (!s.lat ? `<p class="notice">This entry has no map position yet — its coordinates have not been recorded. The address above is what we have. If you know the exact spot, open “Report an incorrect listing” below and send the coordinates.</p>` : "") +
-      `<p class="small">Source: ${esc(s.src)}${s.acc ? " · Checked 18 Nov 2026" : ""} · Listing ID ${esc(s.id)}</p>`;
-    $("detail-fav").addEventListener("click", () => { toggleFav(id); renderDetail(id); });
+      `</div>`) +
+      (!s.lat && !s.live ? `<p class="notice">This entry has no map position yet — its coordinates have not been recorded. The address above is what we have. If you know the exact spot, open “Report an incorrect listing” below and send the coordinates.</p>` : "") +
+      `<p class="small">Source: ${esc(s.src)}${s.acc && !s.live ? " · Checked 18 Nov 2026" : ""}${s.live && s.liveListedAt ? " · Listed " + fmtDate(s.liveListedAt) : ""} · Listing ID ${esc(s.id)}</p>`;
+    const favBtnEl = $("detail-fav");
+    if (favBtnEl) favBtnEl.addEventListener("click", () => { toggleFav(id); renderDetail(id); });
     $("detail-share").addEventListener("click", () => {
       const url = stationUrl(id);
       if (navigator.clipboard && navigator.clipboard.writeText) {

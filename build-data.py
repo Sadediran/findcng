@@ -114,6 +114,8 @@ for e in master:
         entry["price"] = e["price"]          # ₦/SCM as sourced, with price_date
     if e.get("price_date"):
         entry["price_date"] = e["price_date"]
+    if e.get("picng_id") is not None:
+        entry["picng_id"] = e["picng_id"]  # Pi-CNG live-API row id — the app matches /api/live-centres rows against it to spot newly listed centres (2.6)
     stations.append(entry)
 
 (OUT / "stations.json").write_text(

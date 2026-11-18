@@ -380,6 +380,7 @@ footer.appfoot a { margin: 0 6px; }
    verification") were removed in 2.5 with centre self-registration. */
 .badge.acc { background: var(--green-soft); color: var(--green-deep); }
 .badge.unver { background: #edf0ed; color: var(--muted); }
+.badge.live-new { background: #fff3cd; color: #7a5b00; border: 1px solid #e6c200; }
 
 /* Map search bar + stats strip */
 .map-searchbar { display: flex; gap: 8px; margin: 0 0 10px; }

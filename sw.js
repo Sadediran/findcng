@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.3.9"; // bumped 18 Nov 2026 — /data/*.json now network-first (stale data after updates); shell still stale-while-revalidate
+const CACHE = "findcng-v2.4.0"; // bumped 18 Nov 2026 — 2.6 live centres (newly listed Pi-CNG centres show live with a New badge; stations.json now carries picng_id)
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
