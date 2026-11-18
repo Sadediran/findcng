@@ -151,7 +151,7 @@
 
   // ---------------- tabs ----------------
   const VIEWS = ["map", "stations", "centres", "route", "station", "outages",
-    "safety", "calculator", "news", "help", "privacy", "register", "about", "more"];
+    "safety", "calculator", "news", "help", "privacy", "register", "about", "more", "chat"];
   function showView(name) {
     if (!VIEWS.includes(name)) name = "map";
     if (name !== "station") prevView = name;

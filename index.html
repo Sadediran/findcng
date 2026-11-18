@@ -132,6 +132,7 @@
       <button class="chip" onclick="showView('outages')">🔴 Out of gas</button>
       <button class="chip" onclick="showView('calculator')">🧮 Savings calculator</button>
       <button class="chip" onclick="showView('news')">📰 CNG news</button>
+      <button class="chip" onclick="showView('chat')">💬 Ask about CNG</button>
       <button class="chip" onclick="showView('centres')">🔧 Check an installer</button>
     </div>
   </div>
@@ -365,52 +366,37 @@
 <section id="view-news" class="view">
   <h2>CNG news &amp; updates</h2>
   <p class="lede">Dated developments in Nigeria's CNG programme, each with its original source. No rumours, no invented items.</p>
-  <div id="news-list">
-    <div class="card">
-      <p class="meta"><b>16 Nov 2026</b> · Punch</p>
-      <h3 style="margin-top:0">Pi-CNG chairman admits high costs, few stations are slowing adoption</h3>
-      <p style="margin:0">Pi-CNG &amp; EV Executive Chairman Ismaeel Ahmed admitted that high conversion costs and inadequate refuelling stations are slowing CNG adoption — the same two complaints drivers raise most. <span class="small">(Source: Punch, 16 Nov 2026.)</span></p>
+  <p id="news-updated" class="news-updated" aria-live="polite"></p>
+  <div id="news-list"></div>
+  <p class="news-more-wrap"><button id="news-more" class="btn outline small" type="button" hidden>Load older news</button></p>
+</section>
+
+<!-- ============ ASK ABOUT CNG ============ -->
+<section id="view-chat" class="view">
+  <h2>Ask about CNG</h2>
+  <p class="lede">Ask anything about CNG — safety, prices, conversion, where to find gas — and get a plain answer with its sources. No account needed.</p>
+  <div id="chat-setup" class="card warnbox hidden">
+    <h3 style="margin-top:0">AI answers are being set up</h3>
+    <p style="margin:0">The chat answers are being set up — check back soon. In the meantime, the <a href="#" onclick="showView('safety');return false;">Safety hub</a> and <a href="#" onclick="showView('help');return false;">Help &amp; FAQ</a> answer the most common questions.</p>
+  </div>
+  <div id="chat-box">
+    <div class="card chat-card">
+      <div id="chat-log" aria-live="polite">
+        <div class="chat-msg ai"><p>Hello! Ask me anything about CNG in Nigeria — is it safe, what it costs, how much you would save, or where to find gas near you.</p></div>
+      </div>
+      <div class="chips chat-suggest">
+        <button class="chip" data-q="Is CNG safe?">Is CNG safe?</button>
+        <button class="chip" data-q="How much will I save by converting to CNG?">How much will I save?</button>
+        <button class="chip" data-q="Where is the nearest station with gas?">Where is the nearest station with gas?</button>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Ask about CNG…" maxlength="500" aria-label="Your question about CNG" autocomplete="off">
+        <button class="btn small" id="chat-send">Ask</button>
+      </div>
+      <p class="tiny" id="chat-count" style="margin:8px 0 0;text-align:right">0/500</p>
     </div>
-    <div class="card">
-      <p class="meta"><b>11 Nov 2026</b> · New Daily Prime; LASTMA</p>
-      <h3 style="margin-top:0">Bus gas explosion on Lagos–Ibadan Expressway; LASTMA urges inspections</h3>
-      <p style="margin:0">A Toyota Hiace bus (EKY 798 YK) with 18 occupants suffered a gas explosion at Berger. 17 people were rescued unhurt; one male passenger suffered severe burns. The exact technical cause was under investigation at the time of reporting. LASTMA General Manager Olalekan Bakare-Oki urged CNG operators to prioritise regular professional inspections of gas storage and delivery systems. <span class="small">(Sources: New Daily Prime; LASTMA statement, 11 Nov 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>Nov 2026</b> · Pi-CNG</p>
-      <h3 style="margin-top:0">127 more refuelling stations reported in development</h3>
-      <p style="margin:0">127 additional CNG refuelling stations are reported in development across the country, on top of the 105 on the October register — part of the programme's push to cut the queues drivers face daily. <span class="small">(Source: Pi-CNG, November 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>4 Nov 2026</b> · Punch / NAN</p>
-      <h3 style="margin-top:0">National CNG Summit held in Abuja</h3>
-      <p style="margin:0">The National CNG Summit brought the programme, operators and regulators together in Abuja, chaired by Pi-CNG &amp; EV Executive Chairman Ismaeel Ahmed, as converted vehicles passed 120,000. <span class="small">(Sources: Punch; NAN, Nov 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>Oct 2026</b> · Punch (state-by-state check)</p>
-      <h3 style="margin-top:0">Fare-cut directive not implemented in 14 states, including Edo</h3>
-      <p style="margin:0">President Tinubu's 19 September directive — that CNG savings should reach passengers as lower fares by 1 October — was not implemented in Enugu, Anambra, Delta, Imo, Sokoto, Kebbi, Jigawa, Gombe, Edo, Plateau, Ondo, Osun, Oyo and Ogun, Punch found. Drivers say they keep fares high to recover conversion costs and lost queue hours. <span class="small">(Source: Punch, Oct 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>15 Oct 2026</b> · Pi-CNG refuelling stations register</p>
-      <h3 style="margin-top:0">Pi-CNG register lists 105 refuelling stations in 24 states + FCT</h3>
-      <p style="margin:0">The updated Pi-CNG refuelling stations register lists 105 operational stations across 24 states and the FCT — against roughly 120,000–140,000 converted vehicles, about 1,300 vehicles per station. <span class="small">(Sources: Pi-CNG register, pci.gov.ng/refuelling-stations.html, updated 15 Oct 2026; Independent.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>8 Oct 2026</b> · Federal Ministry of Finance briefing</p>
-      <h3 style="margin-top:0">120,000+ CNG vehicles, 400+ conversion centres, 96 stations</h3>
-      <p style="margin:0">A Federal Ministry of Finance briefing cited 120,000+ CNG vehicles, 400+ conversion centres, 96 refuelling stations, 550+ CNG buses, 30–50% lower fares where CNG operates, and ₦100bn+ in duty waivers. <span class="small">(Source: Federal Ministry of Finance briefing, 8 Oct 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>May 2026</b> · Pi-CNG programme updates</p>
-      <h3 style="margin-top:0">Kano corridor work advances; Diverse Autocare hub commissioned in Benin City</h3>
-      <p style="margin:0">Work advanced on the Kano CNG corridor, extending refuelling and conversion capacity in the North-West. In the same month, the Minister of State for Petroleum Resources (Gas), Ekperikpe Ekpo, commissioned the Diverse Autocare CNG hub on Sapele Road, Benin City. <span class="small">(Sources: Pi-CNG programme updates, May 2026.)</span></p>
-    </div>
-    <div class="card">
-      <p class="meta"><b>Sep 2025</b> · Punch; Pulse</p>
-      <h3 style="margin-top:0">CNG price rises to ₦380/SCM as subsidy support is withdrawn</h3>
-      <p style="margin:0">The CNG price rose from ₦230 to ₦380 per SCM for cars and buses (₦450 for trucks) after the Federal Government withdrew subsidy support in September 2025. At ₦380, CNG remains roughly 70–75% cheaper than petrol at ₦1,330–₦1,405 per litre — but drivers fear further rises. <span class="small">(Sources: Punch, 3 Sep 2025; Pulse.)</span></p>
-    </div>
+    <p class="small" style="margin-top:10px">Answers come from verified FindCNG sources + live web search.</p>
+    <p class="small">For live gas at a station right now, the Map tab is the fastest check — the chat only knows reports from the last 2 hours, and says so plainly when there is no fresh report. Your questions are not stored — see <a href="#" onclick="showView('privacy');return false;">Privacy</a>.</p>
   </div>
 </section>
 
@@ -463,6 +449,7 @@
       <li><b>Reports are anonymous.</b> A report records only the station, the status, the time, and an anonymous technical fingerprint (to stop spam). It cannot identify you.</li>
       <li><b>Centre submissions:</b> the centre's public phone is published if approved. Your private contact and your certificate photo are visible only to the moderator, never published.</li>
       <li><b>No ads, no tracking for advertising, no selling data.</b></li>
+      <li><b>AI chat:</b> when you ask a question in “Ask about CNG”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
       <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your dark-map choice are stored in your own browser (localStorage). They never leave your phone.</li>
     </ul>
   </div>
@@ -623,6 +610,7 @@
 <section id="view-more" class="view">
   <h2>More</h2>
   <div class="card menu">
+    <button class="menu-item" onclick="showView('chat')">💬 Ask about CNG <span>Plain answers about safety, prices, savings and where to find gas</span></button>
     <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English + Pidgin</span></button>
     <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
     <button class="menu-item" onclick="showView('outages')">🔴 Out of gas <span>Stations drivers report as finished right now</span></button>
@@ -712,5 +700,7 @@
 <script src="js/data.js"></script>
 <script src="js/postcode.js"></script>
 <script src="js/app.js"></script>
+<script src="js/news.js"></script>
+<script src="js/chat.js"></script>
 </body>
 </html>

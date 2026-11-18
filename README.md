@@ -17,6 +17,7 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 - **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin
 - **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, annual savings; vehicle profile remembered on the device
 - **News page** — dated programme updates, each with its original source
+- **Ask about CNG** — AI chat (Gemini free tier) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports and web search; every answer shows its sources; no chat logs stored
 - **Privacy page** — retention periods, removal requests (contact TBD)
 - **Centre self-registration** — submissions wait in a moderation queue; nothing auto-publishes
 
@@ -61,6 +62,7 @@ build step. First deploy creates the project; later deploys update it.
 | `SUPABASE_ANON_KEY` | Not used by the app yet | Kept for future direct Supabase use. The browser never talks to Supabase today — only the `/api` routes do. |
 | `NIPOST_API_KEY` | For official postcode lookup | NIPOST developer key (`nipost_test_…` for the sandbox, `nipost_live_…` for live). Without it, postcode lookup falls back to the built-in 6-digit table + GPS + map tap. |
 | `NIPOST_API_BASE` | Optional | Override for testing — e.g. `https://ng-postcode.oliha.dev` (unofficial mock with the same paths). Default: `https://api.postcode.gov.ng`. |
+| `GEMINI_API_KEY` | For AI chat answers | Free Google AI Studio key (aistudio.google.com — no card, free tier only). Without it, `/api/chat` answers `{ configured: false }` and the app shows “AI answers are being set up”. The key is server-side only, used only for the `gemini-2.5-flash` model, and no chat logs are stored. |
 | `ADMIN_PASSCODE` | Set in Vercel (Production, secret) + `.env.local` | Moderator passcode for `/admin.html`. A strong passcode was generated at deploy time (18 Nov 2026) and stored in Vercel + `.env.local` — never commit it. To change it, update the Vercel env var and `.env.local`, then redeploy. |
 
 **Without Supabase configured**, the app shows an honest error for reports and
@@ -146,6 +148,7 @@ Browser (index.html + js/app.js)
   ├─ /api/confirmations        one-tap confirm on a report (report_confirmations)
   ├─ /api/listing-reports      flag a listing (listing_reports)
   ├─ /api/postcode             proxy to api.postcode.gov.ng (free tier only)
+  ├─ /api/chat                 "Ask about CNG" — Gemini answers grounded in data/chat-knowledge.json + live news + fresh availability reports + DuckDuckGo search; no logs stored
   ├─ /api/submissions          centre registration -> storage + centre_submissions
   ├─ /api/centres              approved submissions + live verified/pending counts
   └─ /api/admin                passcode-gated moderation (submissions + listing reports)

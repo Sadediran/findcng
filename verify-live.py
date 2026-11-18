@@ -45,6 +45,36 @@ def check(name, cond, detail=""):
     if not cond:
         fails.append(name)
 
+def check_news_feed():
+    """News feed (2.2) — GET /api/news returns items newest-first, and
+    must pass in BOTH live mode (news_items table exists) and
+    static-fallback mode (table missing; the 9 saved seed items).
+    Read-only: zero lasting pollution."""
+    from datetime import datetime
+    def ts(iso):
+        try:
+            return datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        except Exception:
+            return None
+    s, r = call("GET", BASE + "/api/news")
+    items = r.get("items", [])
+    stamps = [ts(x.get("published_at")) for x in items]
+    stamps = [t for t in stamps if t is not None]
+    newest_first = all(stamps[i] >= stamps[i + 1] for i in range(len(stamps) - 1))
+    shape_ok = all(x.get("title") and x.get("source_url") for x in items)
+    check("GET /api/news newest-first (live or static-fallback)",
+          s == 200 and r.get("ok") is True and r.get("source") in ("live", "static-fallback")
+          and isinstance(items, list) and len(items) >= 1 and newest_first and shape_ok,
+          f"HTTP {s} source={r.get('source')} items={len(items)} total={r.get('total')}")
+    # Pagination: ?limit=2 returns at most 2 items, same newest item first.
+    s2, r2 = call("GET", BASE + "/api/news?limit=2")
+    items2 = r2.get("items", [])
+    same_first = (not items2 and not items) or (
+        items2 and items and items2[0].get("source_url") == items[0].get("source_url"))
+    check("GET /api/news?limit=2 paginates",
+          s2 == 200 and r2.get("ok") is True and len(items2) <= 2 and same_first,
+          f"HTTP {s2} items={len(items2)}")
+
 # 1. GET /api/reports (should be configured now)
 s, r = call("GET", BASE + "/api/reports")
 check("GET /api/reports configured", s == 200 and r.get("configured") is True, f"HTTP {s}")
@@ -159,6 +189,30 @@ try:
     check("GET /robots.txt", s == 200 and "Sitemap:" in rb and "Disallow: /admin.html" in rb)
 except Exception as e:
     check("GET /robots.txt", False, str(e)[:120])
+
+# 10b. News feed (2.2) — live or static-fallback, newest first
+check_news_feed()
+
+def check_chat():
+    """Chat smoke test (zero lasting pollution — the chat writes nothing).
+    POSTs the fixed safety question 'Is CNG safe?'. If the Gemini key is
+    absent, the route must answer configured:false gracefully (HTTP 200,
+    answer null). If the key is present, it must return a non-empty answer
+    with a sources list. Also checks the 500-char limit (600 chars -> 400)."""
+    s, r = call("POST", BASE + "/api/chat", {"question": "Is CNG safe?"})
+    if r.get("configured") is False:
+        check("POST /api/chat (no key: graceful configured:false)",
+              s == 200 and r.get("answer") is None, f"HTTP {s}")
+        return
+    answered = (s == 200 and r.get("configured") is True and r.get("ok") is True
+                and isinstance(r.get("answer"), str) and len(r["answer"].strip()) > 0
+                and isinstance(r.get("sources"), list))
+    check("POST /api/chat (key set: non-empty answer with sources)", answered,
+          f"HTTP {s} answer_len={len((r.get('answer') or ''))} sources={len(r.get('sources') or [])} search={r.get('search_available')}")
+    s2, r2 = call("POST", BASE + "/api/chat", {"question": "x" * 600})
+    check("POST /api/chat (600 chars -> 400)", s2 == 400, f"HTTP {s2}")
+
+check_chat()
 
 # 11. Cleanup via Supabase REST (service key) — report row, submission row, storage object
 hdrs = {"apikey": SRV, "Authorization": f"Bearer {SRV}"}
