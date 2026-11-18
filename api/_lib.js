@@ -10,9 +10,12 @@ export const SUPABASE_URL = process.env.SUPABASE_URL || "";
 export const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 
-export function json(res, status, body) {
+export function json(res, status, body, cacheControl) {
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
+  // Default no-store (live reports must never be cached); a caller may
+  // pass an explicit Cache-Control for cacheable public data
+  // (live-centres: edge-cached 1h so the app does not hammer Pi-CNG).
+  res.setHeader("Cache-Control", cacheControl || "no-store");
   return res.status(status).json(body);
 }
 

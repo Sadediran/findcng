@@ -93,13 +93,12 @@ export default async function handler(req, res) {
       : [];
     const rows = [...first.data, ...rest.flatMap((p) => p.data)].map(trimRow);
     if (!rows.length) throw new Error("register returned 0 rows");
-    res.setHeader("Cache-Control", "public, max-age=900, s-maxage=3600, stale-while-revalidate=86400");
     return json(res, 200, {
       ok: true,
       fetched_at: new Date().toISOString(),
       total: total ?? rows.length,
       rows,
-    });
+    }, "public, max-age=900, s-maxage=3600, stale-while-revalidate=86400");
   } catch (e) {
     // Never leak the key or the upstream body; the app falls back to the
     // stored list on any failure.
