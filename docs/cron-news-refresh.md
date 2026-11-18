@@ -95,8 +95,9 @@ Delete in batches of at most 50 ids per call if the list is long.
 > above: `id, source_url, title, published_at`, newest first). You need
 > this for dedupe.
 >
-> **3. Search for fresh Nigerian CNG news.** Use the **news vertical**
-> with these targeted queries (all of them, each run):
+> **3. Search for fresh Nigerian CNG news from FOUR sources, every run.**
+>
+> (a) **News vertical** with these targeted queries (all of them):
 > - `CNG Nigeria`
 > - `Pi-CNG` (also try `PCNGI` and `Presidential CNG Initiative`)
 > - `NADDC CNG`
@@ -105,11 +106,32 @@ Delete in batches of at most 50 ids per call if the list is long.
 > - `CNG stations Nigeria`
 > - `CNG conversion Nigeria`
 >
+> (b) **General Google web search** (not just the news vertical) for
+> `CNG Nigeria`, `Pi-CNG new station`, `CNG conversion centre opened
+> Nigeria` — these catch announcements and official posts the news
+> vertical misses.
+>
+> (c) **Social search (X, Facebook, Threads)** for `CNG Nigeria`,
+> `Pi-CNG`, `NADDC CNG` — official announcements and on-the-ground
+> reports. A social post is insertable ONLY if it links to a real
+> published article (use the article URL as `source_url`) OR it is
+> from an official/verified account (Pi-CNG, NADDC, NIPOST, the
+> Minister, a state government, a named operator) announcing
+> something concrete — a new station, a commissioning, a policy, a
+> price; the `source_url` is then the post URL. Never insert rumors,
+> opinions, complaints without a news event, or claims you cannot
+> verify.
+>
+> (d) **The Pi-CNG press releases listing** on pci.gov.ng (find its
+> current URL from the site — press releases live under
+> `/press-releases/`) for new releases since the last run.
+>
 > Prefer items published since the last run; anything from the last 7
 > days is eligible if it is not already stored. **Every item must link
-> to a real published article you actually found in the search results
-> — copy its URL verbatim from the results. Never invent a headline,
-> a date, a figure, or a URL. Never guess a URL from a domain.**
+> to a real published article or post you actually found in the search
+> results — copy its URL verbatim from the results. Never invent a
+> headline, a date, a figure, or a URL. Never guess a URL from a
+> domain.**
 >
 > **4. Decide what to insert — be strict.**
 > - **Relevant only:** the item must be about CNG (or the Pi-CNG / NADDC
@@ -119,7 +141,8 @@ Delete in batches of at most 50 ids per call if the list is long.
 >   stored — skip; (b) normalized-title similarity — lowercase the
 >   title, strip punctuation and extra words like "breaking", then
 >   compare with stored titles: if it reads as the same story (same
->   event, same figures, even from a different outlet), skip it. One
+>   event, same figures, even from a different outlet, or a social
+>   post about an event already stored as an article), skip it. One
 >   story = one row; keep the earliest-published version.
 > - **Skip press-release spam:** near-identical releases syndicated
 >   across many small outlets, sponsored "brand voice" pieces, and
@@ -140,10 +163,19 @@ Delete in batches of at most 50 ids per call if the list is long.
 > (call 3 above). If the table holds 100 or fewer rows, there is
 > nothing to prune.
 >
-> **6. Report briefly.** One short line per run: how many items were
-> found, how many inserted (titles), how many pruned. Stay silent
-> about runs that found nothing new, beyond that one line. Never
-> include any key value in any report.
+> **6. Record the outcome.** No chat report is wanted for routine
+> runs — the updates appear on the site itself. Record the outcome
+> (counts only) in the run's final message: how many items were
+> found, how many inserted (titles), how many pruned. Message the
+> user only if something genuinely needs them (repeated failures, or
+> the table still missing after 3 consecutive runs). Never include
+> any key value in any report.
+
+> **Saved cron:** `findcng-news-refresh` (interval 6h, Africa/Lagos).
+> This document mirrors the saved job body exactly (updated 18 Nov
+> 2026 — four sources: news vertical, Google web search, social
+> search, Pi-CNG press releases). If the saved body changes, update
+> this document in the same turn.
 
 ## How to check it worked
 

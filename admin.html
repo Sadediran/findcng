@@ -14,7 +14,7 @@
     <div class="logo" aria-hidden="true"><svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="FindCNG logo"><rect width="40" height="40" rx="11" fill="#ffc61a"/><path d="M20 7 C20 7 12 15 12 20.6 a8 8 0 0 0 16 0 C28 15 20 7 20 7z" fill="#06382a"/><circle cx="20" cy="21" r="2.8" fill="#ffc61a"/></svg></div>
     <div>
       <h1>FindCNG — Moderator</h1>
-      <p>Review centre submissions. Nothing publishes until you approve it.</p>
+      <p>Review listing reports from users.</p>
     </div>
   </div>
   <div class="top-links"><a href="index.html">← Back to the app</a></div>
@@ -23,7 +23,7 @@
 <main>
   <div id="gate" class="card">
     <h2 style="margin-top:0">Moderator passcode</h2>
-    <p class="small">Enter the moderator passcode to review submissions. It is set in the Vercel project settings (env <code>ADMIN_PASSCODE</code>).</p>
+    <p class="small">Enter the moderator passcode to review listing reports. It is set in the Vercel project settings (env <code>ADMIN_PASSCODE</code>).</p>
     <div class="field">
       <label for="passcode">Passcode</label>
       <input type="password" id="passcode" autocomplete="current-password">
@@ -33,22 +33,7 @@
   </div>
 
   <div id="queue" class="hidden">
-    <div class="chips" role="group" aria-label="Moderation panels">
-      <button class="chip on" data-panel="subs">Centre submissions</button>
-      <button class="chip" data-panel="lr">Listing reports</button>
-    </div>
-    <div id="panel-subs">
-    <div class="chips" role="group" aria-label="Filter submissions">
-      <button class="chip on" data-status="pending">Pending</button>
-      <button class="chip" data-status="approved">Approved</button>
-      <button class="chip" data-status="rejected">Rejected</button>
-      <button class="chip" data-status="all">All</button>
-    </div>
-    <p id="queue-msg" class="notice hidden"></p>
-    <p class="result-count" id="queue-count"></p>
-    <div id="queue-list"></div>
-    </div>
-    <div id="panel-lr" class="hidden">
+    <div id="panel-lr">
     <div class="chips" role="group" aria-label="Filter listing reports">
       <button class="chip on" data-lr-status="open">Open</button>
       <button class="chip" data-lr-status="resolved">Resolved</button>
@@ -62,14 +47,13 @@
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0">How to verify a centre</h3>
+    <h3 style="margin-top:0">How to handle a listing report</h3>
     <ol style="margin:0;padding-left:20px;font-size:15px">
-      <li><b>Cross-check</b> the centre name against the Pi-CNG accredited list (<a href="https://www.pci.gov.ng/conversion-centers.html" target="_blank" rel="noopener">pci.gov.ng/conversion-centers.html</a>).</li>
-      <li><b>Inspect the certificate:</b> the name matches the submission, the issuing body is NADDC/Pi-CNG, dates are valid, no signs of alteration.</li>
-      <li><b>Phone confirmation:</b> call the centre on the submitted number and confirm they are who they claim.</li>
-      <li>Where possible, <b>physical confirmation</b> by a trusted person in that state.</li>
+      <li>Open the listing from the report and check what the user says is wrong.</li>
+      <li>Where the report is right, fix the listing in the master dataset (<code>~/workspace/cng-project/data/stations.json</code>), re-run <code>build-data.py</code>, and redeploy.</li>
+      <li>Then mark the report resolved here (with a note) — resolving here only closes the report, it does not change the listing.</li>
+      <li>Dismiss reports that are wrong or abusive, with a note saying why.</li>
     </ol>
-    <p class="small" style="margin-bottom:0">Approve only when you are satisfied. Reject with a clear reason (e.g. “not found on the Pi-CNG accredited list”, “certificate could not be verified”) so the centre can fix it and re-apply. Approved centres are listed with an “Independently verified” badge and today's date.</p>
   </div>
 </main>
 
@@ -87,7 +71,6 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let passcode = sessionStorage.getItem("findcng_admin") || "";
-  let currentStatus = "pending";
   let currentLrStatus = "open";
   let currentId = null;
 
@@ -105,132 +88,17 @@
     el.classList.remove("hidden");
   }
 
-  async function loadQueue() {
-    const m = $("queue-msg");
-    m.classList.add("hidden");
-    const j = await call({ action: "list", status: currentStatus });
-    if (j && j.configured === false) {
-      msg(m, "The database is not connected yet — there is no queue to review. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.", "");
-      $("queue-list").innerHTML = "";
-      $("queue-count").textContent = "";
-      return;
-    }
-    if (!j || !j.ok) {
-      if (j && j.error === "wrong passcode") {
-        sessionStorage.removeItem("findcng_admin");
-        $("queue").classList.add("hidden");
-        $("gate").classList.remove("hidden");
-        msg($("gate-msg"), "Wrong passcode.", "err");
-        return;
-      }
-      msg(m, (j && j.error) || "Could not load the queue.", "err");
-      return;
-    }
-    const rows = j.submissions || [];
-    $("queue-count").textContent = rows.length + " submission(s) — " + currentStatus;
-    if (!rows.length) {
-      $("queue-list").innerHTML = `<div class="empty"><p><b>Nothing here.</b></p><p>No ${esc(currentStatus)} submissions right now.</p></div>`;
-      return;
-    }
-    $("queue-list").innerHTML = rows.map((s) => `
-      <div class="card station" data-id="${s.id}">
-        <h3>${esc(s.centre_name)}</h3>
-        <p class="meta">${esc(s.address || "")} · ${esc(s.state || "")}</p>
-        <p class="meta">${esc(s.accreditation_body || "")} · ${esc(s.accreditation_number || "")}</p>
-        <div class="row"><span class="badge ${s.status === "approved" ? "verified" : s.status === "rejected" ? "finished" : "unconfirmed"}">${esc(s.status)}</span>
-        <span class="small">submitted ${new Date(s.submitted_at).toLocaleString("en-NG")}</span></div>
-      </div>`).join("");
-    document.querySelectorAll("#queue-list .station").forEach((el) =>
-      el.addEventListener("click", () => openDetail(el.dataset.id, rows)));
-  }
-
-  function openDetail(id, rows) {
-    const s = rows.find((x) => String(x.id) === String(id));
-    if (!s) return;
-    currentId = id;
-    $("detail-body").innerHTML = `
-      <h2>${esc(s.centre_name)}</h2>
-      <p><b>Operator:</b> ${esc(s.operator || "—")}<br>
-      <b>Address:</b> ${esc(s.address || "—")}<br>
-      <b>State / LGA:</b> ${esc(s.state || "—")} / ${esc(s.lga || "—")}<br>
-      <b>Phone:</b> ${esc(s.phone || "—")} &nbsp; <b>Email:</b> ${esc(s.email || "—")}<br>
-      <b>Services:</b> ${esc(s.services || "—")}<br>
-      <b>Accreditation:</b> ${esc(s.accreditation_body || "—")} — ${esc(s.accreditation_number || "—")}<br>
-      <b>Location:</b> ${s.latitude ? s.latitude + ", " + s.longitude : "not given"}<br>
-      <b>Submitter contact (private):</b> ${esc(s.submitter_contact || "—")}<br>
-      <b>Status:</b> ${esc(s.status)}${s.decision_reason ? " — " + esc(s.decision_reason) : ""}<br>
-      <b>Submitted:</b> ${new Date(s.submitted_at).toLocaleString("en-NG")}</p>
-      <button class="btn outline" id="cert-btn">View certificate</button>
-      <div id="cert-box" style="margin-top:10px"></div>
-      ${s.status === "pending" ? `
-      <div class="field" style="margin-top:14px">
-        <label for="reject-reason">Rejection reason (required if rejecting)</label>
-        <input type="text" id="reject-reason" placeholder="e.g. Not found on the Pi-CNG accredited list">
-      </div>
-      <p id="detail-msg" class="notice hidden"></p>
-      <button class="btn" id="approve-btn">✓ Approve &amp; list</button>
-      <button class="btn outline" id="reject-btn" style="margin-top:8px;background:#fff;color:#a02c2c;border-color:#a02c2c">✕ Reject</button>` : ""}`;
-    $("detail-backdrop").classList.add("open");
-    $("cert-btn").addEventListener("click", async () => {
-      const box = $("cert-box");
-      box.innerHTML = "<p class='small'>Loading certificate…</p>";
-      const j = await call({ action: "certificate", id });
-      if (j && j.ok && j.url) {
-        box.innerHTML = j.url.match(/\.pdf($|\?)/i)
-          ? `<a class="btn outline" href="${esc(j.url)}" target="_blank" rel="noopener">Open certificate PDF ↗</a>`
-          : `<img src="${esc(j.url)}" alt="Accreditation certificate" style="width:100%;border-radius:10px;border:1px solid var(--line)">`;
-      } else {
-        box.innerHTML = "<p class='notice err'>Could not load the certificate.</p>";
-      }
-    });
-    const ap = $("approve-btn");
-    if (ap) ap.addEventListener("click", async () => {
-      const j = await call({ action: "approve", id });
-      if (j && j.ok) {
-        $("detail-backdrop").classList.remove("open");
-        loadQueue();
-      } else {
-        msg($("detail-msg"), (j && j.error) || "Could not approve.", "err");
-      }
-    });
-    const rj = $("reject-btn");
-    if (rj) rj.addEventListener("click", async () => {
-      const reason = $("reject-reason").value.trim();
-      if (!reason) { msg($("detail-msg"), "Give a reason so the centre can fix it and re-apply.", "err"); return; }
-      const j = await call({ action: "reject", id, reason });
-      if (j && j.ok) {
-        $("detail-backdrop").classList.remove("open");
-        loadQueue();
-      } else {
-        msg($("detail-msg"), (j && j.error) || "Could not reject.", "err");
-      }
-    });
-  }
-
   $("gate-go").addEventListener("click", async () => {
     passcode = $("passcode").value;
     if (!passcode) { msg($("gate-msg"), "Enter the passcode.", "err"); return; }
-    const j = await call({ action: "list", status: "pending" });
+    const j = await call({ action: "list_listing_reports", status: "open" });
     if (j && j.error === "wrong passcode") { msg($("gate-msg"), "Wrong passcode.", "err"); return; }
     sessionStorage.setItem("findcng_admin", passcode);
     $("gate").classList.add("hidden");
     $("queue").classList.remove("hidden");
-    loadQueue();
+    loadLrQueue();
   });
   $("passcode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("gate-go").click(); });
-  document.querySelectorAll("#panel-subs .chip").forEach((c) => c.addEventListener("click", () => {
-    document.querySelectorAll("#panel-subs .chip").forEach((x) => x.classList.remove("on"));
-    c.classList.add("on");
-    currentStatus = c.dataset.status;
-    loadQueue();
-  }));
-  document.querySelectorAll("[data-panel]").forEach((c) => c.addEventListener("click", () => {
-    document.querySelectorAll("[data-panel]").forEach((x) => x.classList.remove("on"));
-    c.classList.add("on");
-    $("panel-subs").classList.toggle("hidden", c.dataset.panel !== "subs");
-    $("panel-lr").classList.toggle("hidden", c.dataset.panel !== "lr");
-    if (c.dataset.panel === "lr") loadLrQueue();
-  }));
   document.querySelectorAll("#panel-lr .chip").forEach((c) => c.addEventListener("click", () => {
     document.querySelectorAll("#panel-lr .chip").forEach((x) => x.classList.remove("on"));
     c.classList.add("on");
@@ -243,6 +111,12 @@
     const m = $("lr-msg");
     m.classList.add("hidden");
     const j = await call({ action: "list_listing_reports", status: currentLrStatus });
+    if (j && j.configured === false) {
+      msg(m, "The database is not connected yet — there is no queue to review. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.", "");
+      $("lr-list").innerHTML = "";
+      $("lr-count").textContent = "";
+      return;
+    }
     if (j && j.error === "not_open") {
       msg(m, "Listing reports are not open yet — run sql/001_listing_reports_and_confirmations.sql in Supabase first.", "");
       $("lr-list").innerHTML = "";
@@ -250,6 +124,13 @@
       return;
     }
     if (!j || !j.ok) {
+      if (j && j.error === "wrong passcode") {
+        sessionStorage.removeItem("findcng_admin");
+        $("queue").classList.add("hidden");
+        $("gate").classList.remove("hidden");
+        msg($("gate-msg"), "Wrong passcode.", "err");
+        return;
+      }
       msg(m, (j && j.error) || "Could not load listing reports.", "err");
       return;
     }
@@ -309,7 +190,7 @@
   if (passcode) {
     $("gate").classList.add("hidden");
     $("queue").classList.remove("hidden");
-    loadQueue();
+    loadLrQueue();
   }
 })();
 </script>

@@ -20,9 +20,14 @@ alter table public.availability_reports enable row level security;
 create index if not exists availability_reports_station_time
   on public.availability_reports (station_id, reported_at desc);
 
--- Centre self-registration queue. NOTHING auto-publishes: rows start as
--- 'pending' and only reach the public directory when a moderator approves
--- them (api/admin.js sets status + verification_date).
+-- LEGACY / DORMANT (2.5, 18 Nov 2026): centre self-registration was
+-- reversed and the app no longer reads or writes this table or the
+-- "certificates" bucket below. The table is kept in Supabase (NOT dropped)
+-- so the historical rows survive; the DDL below stays so a fresh setup
+-- matches the live project. Do NOT build new features on it.
+-- Centre self-registration queue (as originally designed): rows started as
+-- 'pending' and only reached the public directory when a moderator approved
+-- them (api/admin.js set status + verification_date).
 create table if not exists public.centre_submissions (
   id uuid primary key default gen_random_uuid(),
   centre_name text not null,

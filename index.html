@@ -35,7 +35,6 @@
     </div>
   </div>
   <div class="top-links">
-    <a href="#" onclick="showView('register');return false;">＋ Add your centre</a>
     <a href="#" onclick="showView('about');return false;">About &amp; sources</a>
   </div>
   </div>
@@ -198,8 +197,6 @@
   <div class="card">
     <h3 style="margin-top:0">What the badges mean</h3>
     <p style="margin:0"><span class="badge acc">✓ Officially accredited</span> — matched on the Pi-CNG accredited centres register (checked 18 Nov 2026).<br>
-    <span class="badge ind">✓ Independently verified</span> — a centre that registered here and passed human verification (list cross-check, certificate inspection, phone confirmation), with the verification date shown.<br>
-    <span class="badge pend">⏳ Pending verification</span> — submitted and awaiting review; not listed publicly until approved.<br>
     <span class="badge stale">⚠ Needs re-verification</span> — from a 2024 list; treat the details as unconfirmed until re-checked.</p>
   </div>
 </section>
@@ -377,11 +374,11 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">What do the badges mean?</h3>
-    <p style="margin:0"><b>Officially accredited</b> — matched on the Pi-CNG accredited centres register. <b>Independently verified</b> — registered here and passed human verification. <b>Pending verification</b> — submitted, awaiting review. <b>Needs re-verification</b> — from a 2024 list, not yet re-checked. See the Centres tab for the full explanation.</p>
+    <p style="margin:0"><b>Officially accredited</b> — matched on the Pi-CNG accredited centres register. <b>Needs re-verification</b> — from a 2024 list, not yet re-checked. See the Centres tab for the full explanation.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Why is a station not on the map?</h3>
-    <p style="margin:0">Only entries with recorded coordinates appear on the map. Coordinates are never guessed — an entry without them appears in the list with its address only. If you know a station's exact spot, ask the centre to register with a GPS pin.</p>
+    <p style="margin:0">Only entries with recorded coordinates appear on the map. Coordinates are never guessed — an entry without them appears in the list with its address only. If you know a station's exact spot, open its listing and use “Report an incorrect listing” to send the coordinates.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Postcodes — how location works here</h3>
@@ -392,8 +389,8 @@
     <p style="margin:0">The station list and the app itself are cached on your phone, so the directory works with patchy signal. Live reports always need a connection — a stale report would mislead you, so the app never shows cached reports as live.</p>
   </div>
   <div class="card">
-    <h3 style="margin-top:0">How do I add my centre?</h3>
-    <p style="margin:0">Use “Add your centre” in the top menu. You will need your accreditation certificate (photo or scan, under 2 MB). Nothing goes live until a moderator verifies it — Pi-CNG list cross-check, certificate inspection, and a phone confirmation.</p>
+    <h3 style="margin-top:0">How does a centre get listed?</h3>
+    <p style="margin:0">Listings come from official government and agency sources — the Pi-CNG registers and other public lists — not from centres registering themselves. A centre appears here once it is published on an official list. If a listing is wrong, open it and tap “Report an incorrect listing”.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
@@ -411,7 +408,6 @@
       <li><b>No accounts.</b> We never ask for your name, phone number or email to use the app or report gas.</li>
       <li><b>Your location stays yours.</b> When you tap “Use my location” or enter a postcode, it is used only to find stations near you. It is never stored with your identity, and never sent anywhere except to show you nearby stations.</li>
       <li><b>Reports are anonymous.</b> A report records only the station, the status, the time, and an anonymous technical fingerprint (to stop spam). It cannot identify you.</li>
-      <li><b>Centre submissions:</b> the centre's public phone is published if approved. Your private contact and your certificate photo are visible only to the moderator, never published.</li>
       <li><b>No ads, no tracking for advertising, no selling data.</b></li>
       <li><b>AI chat:</b> when you ask a question in “Ask about CNG”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
       <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your map style choice are stored in your own browser (localStorage). They never leave your phone.</li>
@@ -422,111 +418,17 @@
     <ul style="margin:0;padding-left:20px;font-size:15px">
       <li><b>Availability reports:</b> live for 2 hours, then they stop counting. Stored rows are kept for up to 12 months for abuse review, then deleted.</li>
       <li><b>Listing reports and confirmations:</b> kept while the issue is open, then for up to 12 months for moderation records.</li>
-      <li><b>Centre submissions:</b> approved centres stay listed while they are listed. Rejected submissions and their certificate photos are deleted after 6 months. Approved centres can ask for their listing to be removed at any time (see below).</li>
-      <li><b>Certificates:</b> stored in a private bucket, visible only to the moderator, never published. Deleted when the submission is deleted or the listing is removed.</li>
     </ul>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Ask for removal or correction</h3>
-    <p style="margin:0">If a listing about your centre is wrong, or you want your centre's listing or your submission removed, contact the moderator and say which listing and why. Removal requests are actioned within 7 days.<br><br>
+    <p style="margin:0">If a listing about your centre is wrong, or you want your centre's listing removed, contact the moderator and say which listing and why. Removal requests are actioned within 7 days.<br><br>
     <b>Contact: [CONTACT TBD — a publishable contact address will be added here.]</b></p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Who is responsible</h3>
     <p style="margin:0">FindCNG Nigeria is a NYSC Community Development Service (CDS) project by ED/26B/2316, a serving corps member in the NADDC–NYSC CNG Retrofitting Training Programme. This page will be updated if the project is handed over to another organisation.</p>
   </div>
-</section>
-
-<!-- ============ REGISTER ============ -->
-<section id="view-register" class="view">
-  <h2>Add your centre</h2>
-  <p class="lede">Run an accredited conversion centre? Submit it for listing. <b>Nothing goes live until it passes verification</b> — Pi-CNG list cross-check, certificate inspection, and a phone confirmation. That is what keeps quacks out of the directory.</p>
-  <form id="reg-form" class="card" novalidate>
-    <div class="field">
-      <label for="reg-name">Centre name *</label>
-      <input type="text" id="reg-name" required maxlength="120" placeholder="As it appears on your signboard">
-    </div>
-    <div class="field">
-      <label for="reg-operator">Company / operator</label>
-      <input type="text" id="reg-operator" maxlength="120" placeholder="If different from the centre name">
-    </div>
-    <div class="field">
-      <label for="reg-address">Full address *</label>
-      <textarea id="reg-address" required maxlength="300" placeholder="Street, area, landmarks"></textarea>
-    </div>
-    <div class="field">
-      <label for="reg-city">City / town</label>
-      <input type="text" id="reg-city" maxlength="80" placeholder="e.g. Benin City">
-    </div>
-    <div class="field">
-      <label for="reg-state">State *</label>
-      <select id="reg-state" required>
-        <option value="">Choose a state</option>
-        <option>Abia</option><option>Adamawa</option><option>Akwa Ibom</option><option>Anambra</option>
-        <option>Bauchi</option><option>Bayelsa</option><option>Benue</option><option>Borno</option>
-        <option>Cross River</option><option>Delta</option><option>Ebonyi</option><option>Edo</option>
-        <option>Ekiti</option><option>Enugu</option><option>Federal Capital Territory</option><option>Gombe</option>
-        <option>Imo</option><option>Jigawa</option><option>Kaduna</option><option>Kano</option>
-        <option>Katsina</option><option>Kebbi</option><option>Kogi</option><option>Kwara</option>
-        <option>Lagos</option><option>Nasarawa</option><option>Niger</option><option>Ogun</option>
-        <option>Ondo</option><option>Osun</option><option>Oyo</option><option>Plateau</option>
-        <option>Rivers</option><option>Sokoto</option><option>Taraba</option><option>Yobe</option>
-        <option>Zamfara</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="reg-lga">LGA</label>
-      <input type="text" id="reg-lga" maxlength="80">
-    </div>
-    <div class="field">
-      <label for="reg-phone">Centre phone (public) *</label>
-      <input type="tel" id="reg-phone" required maxlength="20" placeholder="e.g. 0803 123 4567">
-    </div>
-    <div class="field">
-      <label for="reg-email">Centre email</label>
-      <input type="email" id="reg-email" maxlength="120">
-    </div>
-    <div class="field">
-      <label for="reg-services">Services offered</label>
-      <input type="text" id="reg-services" maxlength="300" placeholder="e.g. Car conversion, keke conversion, cylinder testing">
-    </div>
-    <div class="field">
-      <label for="reg-body">Accredited by *</label>
-      <select id="reg-body" required>
-        <option value="">Choose</option>
-        <option value="Pi-CNG">Pi-CNG</option>
-        <option value="NADDC">NADDC</option>
-        <option value="Pi-CNG/NADDC">Pi-CNG / NADDC</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="reg-number">Accreditation number / certificate reference *</label>
-      <input type="text" id="reg-number" required maxlength="120" placeholder="As shown on your certificate">
-    </div>
-    <div class="field">
-      <label for="reg-cert">Photo or scan of your accreditation certificate * <span class="hint">— required, under 2 MB. Only the moderator sees it; it is never published.</span></label>
-      <input type="file" id="reg-cert" accept="image/*,.pdf" required>
-    </div>
-    <div class="field">
-      <label>Your location on the map <span class="hint">— tap the map to drop a pin, or use GPS</span></label>
-      <div id="reg-map" style="height:260px;border-radius:12px;border:1px solid var(--line);z-index:0"></div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button type="button" class="btn outline small" id="reg-gps" style="flex:1">📍 Use my location</button>
-        <input type="text" id="reg-lat" placeholder="Latitude" inputmode="decimal" style="flex:1" aria-label="Latitude">
-        <input type="text" id="reg-lng" placeholder="Longitude" inputmode="decimal" style="flex:1" aria-label="Longitude">
-      </div>
-    </div>
-    <div class="field">
-      <label for="reg-contact">Your contact (private) <span class="hint">— your own name and phone, for the moderator to reach you. Never published.</span></label>
-      <input type="text" id="reg-contact" maxlength="120" placeholder="e.g. Musa Bello, 0803 123 4567">
-    </div>
-    <div class="field">
-      <label style="font-weight:400"><input type="checkbox" id="reg-declare" style="width:22px;height:22px;vertical-align:middle;margin-right:8px"> I declare that this information is true. I understand that false claims are removed and may be reported. *</label>
-    </div>
-    <p id="reg-msg" class="notice hidden"></p>
-    <button type="submit" class="btn">Submit for verification</button>
-    <p class="small" style="margin-top:10px">What happens next: a moderator cross-checks your centre against the Pi-CNG accredited list, inspects your certificate, and calls you. Approved centres are listed with an “Independently verified” badge and the verification date. Rejected submissions get a reason and can re-apply.</p>
-  </form>
 </section>
 
 <!-- ============ ABOUT ============ -->
@@ -550,8 +452,8 @@
     <p style="margin:0">Anyone can report gas status at a station — no account, no name, no phone number. A report stays live for <b>2 hours</b>, then the station goes back to “Unconfirmed” so old information never misleads anyone. Reports are public immediately because speed matters at a station; contradicted or abusive reports can be reviewed and hidden by a moderator. Other drivers can confirm a report with one tap (yes / not sure / no).</p>
   </div>
   <div class="card">
-    <h3 style="margin-top:0">How verification works</h3>
-    <p style="margin:0">A centre is “Officially accredited” if it appears on the Pi-CNG accredited centres register (checked 18 Nov 2026). Centres that register here are verified by a human — list cross-check, certificate inspection, phone confirmation — before they are listed, and carry an “Independently verified” badge with the verification date. There is no live NADDC/Pi-CNG verification API, so verification is manual for now. Verification badges are reviewed annually; a badge is removed if verification lapses. Entries from 2024 lists carry a “Needs re-verification” badge until re-checked.</p>
+    <h3 style="margin-top:0">How centres are listed</h3>
+    <p style="margin:0">A centre is “Officially accredited” if it appears on the Pi-CNG accredited centres register (checked 18 Nov 2026). Listings come from official government and agency sources — the Pi-CNG registers and other public lists — not from centres registering themselves. Entries from 2024 lists carry a “Needs re-verification” badge until re-checked against a current source.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Data sources</h3>
@@ -565,7 +467,7 @@
     <p class="small" style="margin:8px 0 0" id="about-coverage-note">Coordinates are never guessed — an entry without coordinates appears in the list with its address only. LGA data from the Pi-CNG register is unreliable (about 1 in 5 is wrong), so this app does not use LGA anywhere.</p>
   </div>
   <footer class="appfoot">
-    <a href="#" onclick="showView('register');return false;">Add your centre</a> · <a href="#" onclick="showView('privacy');return false;">Privacy</a> · <a href="#" onclick="showView('help');return false;">Help</a><br>
+    <a href="#" onclick="showView('privacy');return false;">Privacy</a> · <a href="#" onclick="showView('help');return false;">Help</a><br>
     FindCNG Nigeria · November 2026
   </footer>
 </section>
@@ -580,7 +482,6 @@
     <button class="menu-item" onclick="showView('outages')">🔴 Out of gas <span>Stations drivers report as finished right now</span></button>
     <button class="menu-item" onclick="showView('news')">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
     <button class="menu-item" onclick="showView('help')">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
-    <button class="menu-item" onclick="showView('register')">＋ Add your centre <span>Register an accredited conversion centre</span></button>
     <button class="menu-item" onclick="showView('about')">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
     <button class="menu-item" onclick="showView('privacy')">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
   </div>

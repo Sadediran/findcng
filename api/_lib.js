@@ -51,42 +51,6 @@ export function isMissingTableError(e) {
     /Could not find the table/i.test(String(e.message || "")));
 }
 
-// Upload bytes to the private "certificates" storage bucket.
-// Returns the storage path (e.g. "submissions/<uuid>.jpg").
-export async function sbUpload(bucket, path, buffer, contentType) {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_SERVICE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      "Content-Type": contentType,
-      "x-upsert": "false",
-    },
-    body: buffer,
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`Storage upload failed (${r.status}): ${t.slice(0, 200)}`);
-  }
-  return path;
-}
-
-// Short-lived signed URL for a private storage object (moderator viewing).
-export async function sbSignedUrl(bucket, path, expiresInSeconds = 3600) {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${bucket}/${path}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_SERVICE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ expiresIn: expiresInSeconds }),
-  });
-  if (!r.ok) throw new Error(`Signed URL failed (${r.status})`);
-  const j = await r.json();
-  return SUPABASE_URL + "/storage/v1" + j.signedURL;
-}
-
 // Anonymous reporter fingerprint: hash of IP + user agent + day. It cannot
 // identify a person, rotates daily, and exists only to stop spam.
 // NOTE: Vercel may pass the real client IP in x-forwarded-for.

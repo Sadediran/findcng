@@ -1,12 +1,12 @@
 {
  "generated": "2026-11-18",
- "total_records": 663,
+ "total_records": 721,
  "total_records_label": "Directory records — every station and centre entry in the dataset.",
- "refuelling_locations": 129,
+ "refuelling_locations": 134,
  "refuelling_label": "Unique refuelling locations (refuelling-only + both).",
- "conversion_centres": 564,
+ "conversion_centres": 617,
  "conversion_label": "Unique conversion centres (conversion-only + both).",
- "picng_register_matched": 525,
+ "picng_register_matched": 576,
  "picng_register_label": "Conversion centres matched on the Pi-CNG accredited centres register (checked 18 Nov 2026).",
  "picng_refuel_register_matched": 105,
  "picng_refuel_register_label": "Refuelling locations matched on the Pi-CNG refuelling stations register (updated 15 Oct 2026).",
@@ -14,24 +14,23 @@
  "needs_reverification_label": "Entries from 2024 lists that need re-checking before they can be trusted.",
  "single_source": 9,
  "single_source_label": "Entries from one source only — need a second check.",
- "states_with_data": 29,
+ "states_with_data": 30,
  "states_with_data_label": "States + FCT with at least one entry (of 37).",
  "no_data_states": [
   "Bauchi",
   "Benue",
-  "Jigawa",
   "Kebbi",
   "Plateau",
   "Taraba",
   "Yobe",
   "Zamfara"
  ],
- "with_coordinates": 460,
+ "with_coordinates": 464,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
   "exact": 21,
   "approximate": 360,
-  "town": 79
+  "town": 83
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
  "with_phone": 18,
@@ -62,7 +61,7 @@
   },
   {
    "name": "Femadec Energy Limited",
-   "count": 11
+   "count": 13
   },
   {
    "name": "Ibile Oil and Gas",
@@ -81,7 +80,7 @@
    "count": 7
   },
   {
-   "name": "Prime Motors and Mobility Solutions Ltd",
+   "name": "ASAD Energy Fleet",
    "count": 5
   }
  ],
@@ -117,7 +116,7 @@
   },
   {
    "state": "Delta",
-   "count": 20
+   "count": 22
   },
   {
    "state": "Ebonyi",
@@ -133,31 +132,35 @@
   },
   {
    "state": "Enugu",
-   "count": 14
+   "count": 22
   },
   {
    "state": "Federal Capital Territory",
-   "count": 147
+   "count": 152
   },
   {
    "state": "Gombe",
-   "count": 1
+   "count": 8
   },
   {
    "state": "Imo",
-   "count": 5
+   "count": 12
+  },
+  {
+   "state": "Jigawa",
+   "count": 1
   },
   {
    "state": "Kaduna",
-   "count": 20
+   "count": 24
   },
   {
    "state": "Kano",
-   "count": 72
+   "count": 78
   },
   {
    "state": "Katsina",
-   "count": 22
+   "count": 23
   },
   {
    "state": "Kogi",
@@ -165,11 +168,11 @@
   },
   {
    "state": "Kwara",
-   "count": 15
+   "count": 16
   },
   {
    "state": "Lagos",
-   "count": 188
+   "count": 190
   },
   {
    "state": "Nasarawa",
@@ -193,11 +196,11 @@
   },
   {
    "state": "Oyo",
-   "count": 32
+   "count": 33
   },
   {
    "state": "Rivers",
-   "count": 18
+   "count": 31
   },
   {
    "state": "Sokoto",

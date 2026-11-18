@@ -5,7 +5,7 @@
    returning visitor keeps the old shell until the service worker file
    itself changes. (18 Nov 2026: 2.3 shipped without a bump and Saheed's
    phone showed no updates at all until the tab was closed and reopened.) */
-const CACHE = "findcng-v2.3.5"; // bumped 18 Nov 2026 for the 2.4 release (dark map layer + route planner removed, "on the map" count single-sourced)
+const CACHE = "findcng-v2.3.6"; // bumped 18 Nov 2026 for the 2.5 release (centre registration + verification system removed; live Pi-CNG API data pipeline, 721 entries)
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

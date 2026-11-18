@@ -1,6 +1,6 @@
 /* FindCNG Nigeria — 2.0 app logic. Plain JS, no framework.
    Data: data/stations.json + data/stats.json (build-time, computed from the
-   master dataset — never hardcoded). Runtime counts from /api/centres.
+   master dataset — never hardcoded).
    Reports: /api/reports (Supabase). NO demo mode: if the backend is
    unreachable the app says so honestly and saves nothing locally — a report
    the user thinks is shared must actually be shared. */
@@ -11,12 +11,14 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+  // "City, State" — or just "State" when the city is unknown (2.5: the
+  // Pi-CNG API has no city field, so 14 API entries carry city null;
+  // without this the render showed a dangling ", State").
+  const locLabel = (s) => (s.city ? `${s.city}, ${s.state}` : `${s.state}`);
 
   // ---------------- state ----------------
-  let stations = [];            // all entries (seed + approved submissions)
+  let stations = [];            // all entries from data/stations.json
   let stats = null;             // data/stats.json (build-time, computed)
-  let runtimeCounts = null;     // { verified, pending } from /api/centres
-  let runtimeCountsFailed = false;
   let dataLoaded = false;
   let reports = new Map();      // stationId -> latest fresh report {id,status,queue,pressure,compressor,ts}
   let reportsLive = false;      // true once /api/reports has answered OK
@@ -76,11 +78,10 @@
     return `<span class="badge ${st}"><span class="dot ${st}"></span>${s.label}${t}</span>`;
   }
   function typeBadge(t) { return `<span class="badge type">${F.TYPE_LABEL[t] || t}</span>`; }
-  // Four DISTINCT verification badges — never one green badge for all.
+  // DISTINCT data-driven badges — never one green badge for all. These
+  // describe the DATASET (Pi-CNG register match / stale 2024 list), not a
+  // submission: centre self-registration was removed in 2.5 (18 Nov 2026).
   function verifyBadge(s) {
-    if (s.verifiedDate) {
-      return `<span class="badge ind">✓ Independently verified · ${new Date(s.verifiedDate).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</span>`;
-    }
     if (s.acc) {
       return `<span class="badge acc">✓ Officially accredited · Pi-CNG register ${F.REGISTER_DATES.centres}</span>`;
     }
@@ -146,7 +147,7 @@
 
   // ---------------- tabs ----------------
   const VIEWS = ["map", "stations", "centres", "station", "outages",
-    "safety", "calculator", "news", "help", "privacy", "register", "about", "more", "chat"];
+    "safety", "calculator", "news", "help", "privacy", "about", "more", "chat"];
   function showView(name) {
     if (!VIEWS.includes(name)) name = "map";
     if (name !== "station") prevView = name;
@@ -166,7 +167,6 @@
       history.replaceState(null, "", url);
     }
     if (name === "map" && map) setTimeout(() => { map.invalidateSize(); renderMapMarkers(); }, 60);
-    if (name === "register") initRegisterMapSoon();
     if (name === "outages") renderOutages();
     if (name === "more") renderFavs();
   }
@@ -210,43 +210,12 @@
         renderMapMarkers();
         renderNearest();
         renderMapCount();
-        return loadApprovedCentres();
+        handleDeepLink();
       })
-      .then(() => handleDeepLink())
       .catch(() => {
         $("map-count").textContent = "Could not load the station list. Check your connection and reload.";
       });
   }
-  function loadApprovedCentres() {
-    return fetch("/api/centres")
-      .then((r) => r.json())
-      .then((j) => {
-        if (j && j.counts) { runtimeCounts = j.counts; renderStats(); }
-        if (!j || !j.centres || !j.centres.length) return;
-        const existing = new Set(stations.map((s) => s.id));
-        j.centres.forEach((c) => {
-          if (existing.has(c.id)) return;
-          stations.push({
-            id: c.id, name: c.name, type: "conversion", operator: c.operator,
-            address: c.address, city: c.city, state: c.state, zone: "",
-            postcode: c.postcode || null, lat: c.latitude, lng: c.longitude,
-            phone: c.phone || null, confidence: "verified", acc: false,
-            refReg: false, src: "Verified via FindCNG", verifiedDate: c.verification_date,
-          });
-        });
-        populateStateFilters();
-        renderStats();
-        renderStations();
-        renderCentres();
-        renderMapMarkers();
-        renderNearest();
-        renderMapCount();
-      })
-      .catch(() => { /* approved centres are optional; seed data still works */
-        runtimeCountsFailed = true; renderStats();
-      });
-  }
-
   // ---------------- honest statistics ----------------
   function statTile(num, label, meaning, live) {
     return `<div class="stat-tile${live ? " live" : ""}"><div class="num">${num}</div><div class="lbl">${esc(label)}</div><div class="mean">${esc(meaning)}</div></div>`;
@@ -262,14 +231,8 @@
       statTile(stats.needs_reverification.toLocaleString(), "Need re-verification", stats.needs_reverification_label) +
       statTile(stats.states_with_data + " / 37", "States + FCT with data", stats.states_with_data_label) +
       statTile(onMapCount().toLocaleString(), "With coordinates", stats.with_coordinates_label);
-    const live = runtimeCounts
-      ? statTile(runtimeCounts.verified.toLocaleString(), "Independently verified (live)", "Centres registered here that passed human verification.", true) +
-        statTile(runtimeCounts.pending.toLocaleString(), "Pending verification (live)", "Submissions awaiting review — not listed publicly until approved.", true)
-      : runtimeCountsFailed
-      ? statTile("—", "Independently verified / pending (live)", "Live counts could not be reached — check your connection.")
-      : statTile("—", "Independently verified / pending (live)", "Loading live counts…");
-    const grid = `<div class="stat-grid">${tiles}${live}</div>` +
-      `<p class="tiny" style="margin:8px 0 0">Directory numbers computed from the dataset on ${esc(stats.generated)}. Live counts come from the verification queue right now.</p>`;
+    const grid = `<div class="stat-grid">${tiles}</div>` +
+      `<p class="tiny" style="margin:8px 0 0">Directory numbers computed from the dataset on ${esc(stats.generated)}.</p>`;
     const home = $("home-stats");
     if (home) home.innerHTML = grid;
     const about = $("about-stats");
@@ -285,7 +248,7 @@
     const nodata = $("nodata-note");
     if (nodata) {
       nodata.textContent = stats.no_data_states.length
-        ? `${stats.no_data_states.length} states have no data yet: ${stats.no_data_states.join(", ")}. If you know a station or centre in one of them, ask it to register — see “Add your centre”.`
+        ? `${stats.no_data_states.length} states have no data yet: ${stats.no_data_states.join(", ")}. New entries come from official government and agency lists as they are published.`
         : "Every state now has at least one entry.";
     }
     const cs = $("centre-stats");
@@ -361,8 +324,7 @@
     } catch { /* ignore */ }
     return "satellite";
   }
-  // Fresh layer instance per map (one L.tileLayer cannot live on two maps);
-  // the registration map shares the user's layer choice.
+  // Fresh layer instance per map (one L.tileLayer cannot live on two maps).
   function createBaseLayer(kind) {
     const def = MAP_LAYERS[kind] || MAP_LAYERS.street;
     return L.tileLayer(def.url, { maxZoom: 19, attribution: def.attribution });
@@ -452,7 +414,7 @@
     const prec = coordPrecision(s);
     const precLine = prec === "town" ? `<br><span class="badge area-pin">◉ Area pin — neighbourhood, not exact spot</span>`
       : prec === "approximate" ? `<br><span class="small">≈ Approximate location — near this spot, not exact</span>` : "";
-    return `<b>${esc(s.name)}</b><br>${esc(s.address || "")}<br>${esc(s.city || "")}, ${esc(s.state)}${d}<br>` +
+    return `<b>${esc(s.name)}</b><br>${esc(s.address || "")}<br>${esc(locLabel(s))}${d}<br>` +
       `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}${precLine}<br>` +
       `<button class="btn small" style="margin-top:8px" onclick="openStation('${s.id}')">Details &amp; report</button>`;
   }
@@ -590,7 +552,7 @@
       `<div class="card station st-${statusOf(s.id)}" data-id="${s.id}" style="display:flex;gap:10px;align-items:center">` +
       etaRing(d * 1.5) +
       `<div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3>` +
-      `<p class="meta">${esc(s.address || "")} · ${esc(s.city || "")}, ${esc(s.state)} · <span class="dist-chip">${fmtKm(d)}</span></p>` +
+      `<p class="meta">${esc(s.address || "")} · ${esc(locLabel(s))} · <span class="dist-chip">${fmtKm(d)}</span></p>` +
       `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)}${coordPrecision(s) === "town" ? " " + precisionChip(s) : ""}</div></div></div>`
     ).join("") +
     `<p class="tiny">Drive times are rough estimates (about 40 km/h) — traffic and road conditions change them.</p>`;
@@ -692,7 +654,7 @@
     const precChip = coordPrecision(s) === "town" ? " " + precisionChip(s) : "";
     return `<div class="card station st-${st}" data-id="${s.id}"><h3>${esc(s.name)} <button class="fav-btn" data-fav="${s.id}" aria-label="Favourite">${fav}</button></h3>` +
       `<p class="meta">${esc(s.address || "")}</p>` +
-      `<p class="meta">${esc(s.city || "")}, ${esc(s.state)}${d}${noc}</p>` +
+      `<p class="meta">${esc(locLabel(s))}${d}${noc}</p>` +
       `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}</div></div>`;
   }
   function bindCards(box) {
@@ -733,7 +695,7 @@
     if (!list.length) {
       box.innerHTML = summaryHtml + (sortMode === "favs"
         ? `<div class="empty"><div class="big">☆</div><p><b>No favourites yet.</b></p><p>Tap the ☆ on any station to save it here — it stays on this device, no account needed.</p></div>`
-        : `<div class="empty"><div class="big">🔍</div><p><b>Nothing matches that search.</b></p><p>Try a different spelling, or clear the state filter. If a real station is missing, it can be added — see “Add your centre”.</p></div>`);
+        : `<div class="empty"><div class="big">🔍</div><p><b>Nothing matches that search.</b></p><p>Try a different spelling, or clear the state filter. New entries come from official government and agency lists as they are published.</p></div>`);
       $("station-more").classList.add("hidden");
       return;
     }
@@ -788,12 +750,11 @@
     }
     const nq = normName(q);
     const hits = stations.filter((s) => s.acc && normName(s.name).includes(nq)).slice(0, 8);
-    const verifiedHits = stations.filter((s) => s.verifiedDate && normName(s.name).includes(nq)).slice(0, 8);
-    if (hits.length || verifiedHits.length) {
-      const all = [...verifiedHits, ...hits.filter((h) => !verifiedHits.includes(h))].slice(0, 8);
+    if (hits.length) {
+      const all = hits;
       box.innerHTML = `<div class="notice ok"><b>✓ Found — ${all.length} match${all.length > 1 ? "es" : ""}:</b></div>` +
         all.map((s) => `<div class="card station" data-id="${s.id}"><h3>${esc(s.name)}</h3>` +
-          `<p class="meta">${esc(s.address || "")} · ${esc(s.city || "")}, ${esc(s.state)}</p>` +
+          `<p class="meta">${esc(s.address || "")} · ${esc(locLabel(s))}</p>` +
           `<div class="row">${verifyBadge(s)}</div></div>`).join("");
       bindCards(box);
     } else {
@@ -877,7 +838,7 @@
     const heroBody =
       `<div class="detail-hero-body"><h2>${esc(s.name)}</h2>` +
       `<div class="row">${statusBadge(id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${s.category ? ` <span class="badge type">${esc(s.category)}</span>` : ""}${precChip ? " " + precChip : ""}</div>` +
-      `<p class="hero-addr">${esc(s.address || "")}<br>${esc(s.city || "")}, ${esc(s.state)}${s.postcode ? " · Postcode " + esc(s.postcode) : ""}</p>` +
+      `<p class="hero-addr">${esc(s.address || "")}<br>${esc(locLabel(s))}${s.postcode ? " · Postcode " + esc(s.postcode) : ""}</p>` +
       (distText ? `<p class="hero-dist">📍 ${distText} from your spot</p>` : "") +
       `</div>`;
     const hero = photo
@@ -923,8 +884,8 @@
         `<button class="btn outline small" onclick="openListing('${s.id}','incorrect')">⚠️ Report an incorrect listing</button>` +
         `<button class="btn outline small" onclick="openListing('${s.id}','closed')">⛔ Report a closure</button>` +
       `</div>` +
-      (!s.lat ? `<p class="notice">This entry has no map position yet — its coordinates have not been recorded. The address above is what we have. If you know the exact spot, ask the centre to register with a GPS pin.</p>` : "") +
-      `<p class="small">Source: ${esc(s.src)}${s.verifiedDate ? " · Verified " + new Date(s.verifiedDate).toLocaleDateString("en-NG") : s.acc ? " · Checked 18 Nov 2026" : ""} · Listing ID ${esc(s.id)}</p>`;
+      (!s.lat ? `<p class="notice">This entry has no map position yet — its coordinates have not been recorded. The address above is what we have. If you know the exact spot, open “Report an incorrect listing” below and send the coordinates.</p>` : "") +
+      `<p class="small">Source: ${esc(s.src)}${s.acc ? " · Checked 18 Nov 2026" : ""} · Listing ID ${esc(s.id)}</p>`;
     $("detail-fav").addEventListener("click", () => { toggleFav(id); renderDetail(id); });
     $("detail-share").addEventListener("click", () => {
       const url = stationUrl(id);
@@ -1237,136 +1198,6 @@
     });
   }
 
-  // ---------------- registration ----------------
-  let regMap = null, regPin = null;
-  function initRegisterMapSoon() {
-    setTimeout(() => {
-      if (regMap) { regMap.invalidateSize(); return; }
-      if (!leafletReady()) {
-        const el = $("reg-map");
-        if (el) el.innerHTML = `<div class="empty"><p>The map could not load — type your latitude and longitude directly, or use the GPS button.</p></div>`;
-        return;
-      }
-      regMap = L.map("reg-map", { zoomControl: true }).setView(F.NIGERIA_CENTRE, F.NIGERIA_ZOOM);
-      createBaseLayer(storedMapLayer()).addTo(regMap);
-      regMap.on("click", (e) => {
-        $("reg-lat").value = e.latlng.lat.toFixed(6);
-        $("reg-lng").value = e.latlng.lng.toFixed(6);
-        if (regPin) regMap.removeLayer(regPin);
-        regPin = L.marker([e.latlng.lat, e.latlng.lng]).addTo(regMap);
-      });
-    }, 80);
-  }
-  function regGps() {
-    if (!navigator.geolocation) { toast("Your device does not support location."); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        $("reg-lat").value = pos.coords.latitude.toFixed(6);
-        $("reg-lng").value = pos.coords.longitude.toFixed(6);
-        if (regMap) {
-          regMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
-          if (regPin) regMap.removeLayer(regPin);
-          regPin = L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(regMap);
-        }
-        toast("Location set from your phone's GPS.");
-      },
-      () => toast("Could not get your location — tap the map to drop a pin instead."),
-      { enableHighAccuracy: true, timeout: 12000 }
-    );
-  }
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const rd = new FileReader();
-      rd.onload = () => resolve(rd.result);
-      rd.onerror = reject;
-      rd.readAsDataURL(file);
-    });
-  }
-  function duplicateCheck(name, address) {
-    const nn = normName(name), na = normName(address);
-    return stations.find((s) => {
-      if (normName(s.name) !== nn) return false;
-      const sa = normName(s.address || "");
-      const aWords = new Set(na.split(" ").filter((w) => w.length > 2));
-      const sWords = new Set(sa.split(" ").filter((w) => w.length > 2));
-      let hit = 0;
-      aWords.forEach((w) => { if (sWords.has(w)) hit++; });
-      return hit >= 2 || (na && sa && (na.includes(sa) || sa.includes(na)));
-    });
-  }
-  async function submitRegistration(ev) {
-    ev.preventDefault();
-    const msg = $("reg-msg");
-    const name = $("reg-name").value.trim();
-    const address = $("reg-address").value.trim();
-    const state = $("reg-state").value;
-    const phone = $("reg-phone").value.trim();
-    const body = $("reg-body").value;
-    const number = $("reg-number").value.trim();
-    const certFile = $("reg-cert").files[0];
-    const declared = $("reg-declare").checked;
-    if (!name || !address || !state || !phone || !body || !number) {
-      msg.textContent = "Please fill in every required field (marked *).";
-      msg.className = "notice err"; msg.classList.remove("hidden"); return;
-    }
-    if (!certFile) {
-      msg.textContent = "A photo or scan of your accreditation certificate is required — a centre cannot be listed without evidence.";
-      msg.className = "notice err"; msg.classList.remove("hidden"); return;
-    }
-    if (certFile.size > 2 * 1024 * 1024) {
-      msg.textContent = "The certificate file is too large — please use a photo under 2 MB.";
-      msg.className = "notice err"; msg.classList.remove("hidden"); return;
-    }
-    if (!declared) {
-      msg.textContent = "Please tick the declaration that the information is true.";
-      msg.className = "notice err"; msg.classList.remove("hidden"); return;
-    }
-    const dup = duplicateCheck(name, address);
-    if (dup) {
-      msg.innerHTML = `This centre looks like it is already listed: <b>${esc(dup.name)}</b> (${esc(dup.address || "")}). ` +
-        `If the listing is wrong or out of date, open it and use “Report an incorrect listing” instead of submitting a duplicate.`;
-      msg.className = "notice err"; msg.classList.remove("hidden"); return;
-    }
-    msg.textContent = "Sending your submission…";
-    msg.className = "notice"; msg.classList.remove("hidden");
-    const cert = await fileToBase64(certFile);
-    const payload = {
-      name, operator: $("reg-operator").value.trim() || name, address,
-      city: $("reg-city").value.trim(), state, lga: $("reg-lga").value.trim(),
-      phone, email: $("reg-email").value.trim(),
-      services: $("reg-services").value.trim(),
-      accreditation_body: body, accreditation_number: number,
-      certificate: cert, certificate_name: certFile.name,
-      latitude: parseFloat($("reg-lat").value) || null,
-      longitude: parseFloat($("reg-lng").value) || null,
-      submitter_contact: $("reg-contact").value.trim(),
-      declaration: true,
-    };
-    try {
-      const r = await fetch("/api/submissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const j = await r.json();
-      if (j && j.configured === false) {
-        msg.textContent = "Submissions are not available right now — the database is not connected. Your submission was NOT saved. Please try again later.";
-        msg.className = "notice err"; msg.classList.remove("hidden");
-        return;
-      }
-      if (j && j.ok) {
-        msg.innerHTML = `<b>✓ Submission received — now Pending verification.</b> It is in the moderation queue. Nothing goes live until it passes verification (Pi-CNG list cross-check, certificate inspection, phone confirmation). You will not be listed automatically — a moderator reviews every submission.`;
-        msg.className = "notice ok"; msg.classList.remove("hidden");
-        $("reg-form").reset();
-        return;
-      }
-      throw new Error((j && j.error) || "failed");
-    } catch (e) {
-      msg.textContent = "Could not send — check your connection and try again. Nothing was saved. " + (e.message || "");
-      msg.className = "notice err"; msg.classList.remove("hidden");
-    }
-  }
-
   // ---------------- deep links ----------------
   // ?station=CNG-XXX (shareable detail), ?state=Lagos (state page),
   // ?view=safety (or #safety for backwards compatibility).
@@ -1463,9 +1294,6 @@
     $("report-close").addEventListener("click", () => $("report-backdrop").classList.remove("open"));
     $("listing-close").addEventListener("click", () => $("listing-backdrop").classList.remove("open"));
     $("station-back").addEventListener("click", () => showView(prevView || "map"));
-    // Registration
-    $("reg-form").addEventListener("submit", submitRegistration);
-    $("reg-gps").addEventListener("click", regGps);
     // Defaults
     $("calc-petrol").value = F.PRICES.petrolPerLitre;
     $("calc-cng").value = F.PRICES.cngPerScmCar;

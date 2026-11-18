@@ -11,7 +11,8 @@ Rules (do not weaken):
 - NEVER invent coordinates. A station's lat/lng comes only from the master
   dataset. Stations without coordinates are listed with their address only.
 - NEVER hardcode statistics in the app. Every number on the site comes from
-  data/stats.json (build time) or /api/centres counts (runtime).
+  data/stats.json (build time). (The /api/centres runtime counts were
+  removed in 2.5 with centre self-registration.)
 - LGA is NOT carried into the app data: ~20% of Pi-CNG LGA values are wrong
   (COVERAGE-REPORT.md §0). The app never filters or displays LGA.
 - Postcode coordinates are APPROXIMATE district/town centres, clearly flagged.
@@ -222,7 +223,7 @@ import urllib.parse
 BASE = "https://findcng.vercel.app"
 urls = [("", "1.0", "daily")]
 for view in ["stations", "centres", "safety", "calculator",
-             "news", "outages", "help", "about", "privacy", "register"]:
+             "news", "outages", "help", "about", "privacy"]:
     urls.append((f"?view={view}", "0.8", "weekly"))
 for s in states_present:
     urls.append((f"?state={urllib.parse.quote(s)}", "0.7", "weekly"))

@@ -1,20 +1,20 @@
-// POST /api/admin — moderation of the centre-submission queue.
+// POST /api/admin — moderation of listing reports.
 // Passcode-gated: every call needs header X-Admin-Passcode matching
 // env ADMIN_PASSCODE (default "findcng-admin" — change it, see README).
 //
-// Body: { action: "list", status?: "pending"|"approved"|"rejected"|"all" }
-//       { action: "approve", id }
-//       { action: "reject", id, reason }
-//       { action: "certificate", id }  -> short-lived signed URL (1h)
-//       { action: "list_listing_reports", status?: "open"|"resolved"|"dismissed"|"all" }
+// Body: { action: "list_listing_reports", status?: "open"|"resolved"|"dismissed"|"all" }
 //       { action: "resolve_listing_report", id, note? }
 //       { action: "dismiss_listing_report", id, note? }
 //
-// Approve sets status + verification_date (today) — the centre then
-// appears in /api/centres and in the public directory with its badge.
 // Listing-report actions answer { ok: false, error: "not_open" } until
 // sql/001_listing_reports_and_confirmations.sql has been run.
-import { json, sb, sbSignedUrl, supabaseConfigured, checkAdminPasscode, rateLimit, isMissingTableError } from "./_lib.js";
+//
+// NOTE (2.5, 18 Nov 2026): the centre-submission half of this route
+// (list / approve / reject / certificate, over centre_submissions) was
+// removed when centre self-registration was reversed. The
+// centre_submissions table is left dormant in Supabase; nothing here
+// reads or writes it.
+import { json, sb, supabaseConfigured, checkAdminPasscode, rateLimit, isMissingTableError } from "./_lib.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -33,15 +33,6 @@ export default async function handler(req, res) {
     const b = req.body || {};
     const action = String(b.action || "");
     const id = String(b.id || "").trim();
-
-    if (action === "list") {
-      const status = String(b.status || "pending");
-      const filter = status === "all" ? "" : `&status=eq.${encodeURIComponent(status)}`;
-      const rows = await sb(
-        `centre_submissions?select=*&order=submitted_at.desc&limit=200${filter}`
-      );
-      return json(res, 200, { configured: true, ok: true, submissions: rows || [] });
-    }
 
     if (action === "list_listing_reports") {
       const status = String(b.status || "open");
@@ -79,40 +70,6 @@ export default async function handler(req, res) {
         }
         throw e;
       }
-    }
-
-    if (!id) return json(res, 400, { ok: false, error: "id is required" });
-    const today = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
-
-    if (action === "approve") {
-      const updated = await sb(`centre_submissions?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: { status: "approved", reviewed_at: now, reviewed_by: "moderator", verification_date: today, decision_reason: null },
-        prefer: "return=representation",
-      });
-      if (!updated || !updated.length) return json(res, 404, { ok: false, error: "submission not found" });
-      return json(res, 200, { configured: true, ok: true, submission: updated[0] });
-    }
-
-    if (action === "reject") {
-      const reason = String(b.reason || "").trim().slice(0, 300);
-      if (!reason) return json(res, 400, { ok: false, error: "A reason is required so the centre can fix it and re-apply." });
-      const updated = await sb(`centre_submissions?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: { status: "rejected", reviewed_at: now, reviewed_by: "moderator", decision_reason: reason, verification_date: null },
-        prefer: "return=representation",
-      });
-      if (!updated || !updated.length) return json(res, 404, { ok: false, error: "submission not found" });
-      return json(res, 200, { configured: true, ok: true, submission: updated[0] });
-    }
-
-    if (action === "certificate") {
-      const rows = await sb(`centre_submissions?select=certificate_path&id=eq.${encodeURIComponent(id)}`);
-      const path = rows?.[0]?.certificate_path;
-      if (!path) return json(res, 404, { ok: false, error: "no certificate on file" });
-      const url = await sbSignedUrl("certificates", path, 3600);
-      return json(res, 200, { configured: true, ok: true, url });
     }
 
     return json(res, 400, { ok: false, error: "unknown action" });
