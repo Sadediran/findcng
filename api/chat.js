@@ -28,10 +28,9 @@ const MAX_QUESTION = 500;
 const MAX_OUTPUT_TOKENS = 400;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
 const SEARCH_TIMEOUT_MS = 5000;
-// 18 Nov 2026: gemini-3.8-flash is slower than 2.5-flash was — the first
-// live call exceeded the old 25s limit, so the timeout is 45s (the
-// function itself is capped at 60s in vercel.json).
-const GEMINI_TIMEOUT_MS = 45000;
+// Per-attempt timeout for one Gemini call (askGemini retries once on 503/429
+// after an 8s backoff; 2 x 20s + 8s + ~5s search stays inside the 60s cap).
+const GEMINI_TIMEOUT_MS = 20000;
 
 // --- Knowledge base + station names (loaded once per instance) ----------
 let knowledgeText = null; // null = not tried yet; "" = failed to load
@@ -192,29 +191,44 @@ const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about C
 6. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. End with the source names for the key facts you used.`;
 
 async function askGemini(apiKey, prompt) {
-  const r = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
-      // level (medium) made live calls run past 45s. "low" keeps answers
-      // fast; our answers are short and grounded, not reasoning tasks.
-      // NO temperature: Google's guidance for Gemini 3 models is to leave
-      // temperature at its default (1.0) — lowering it "may cause looping
-      // or degraded performance", and our temperature: 0.2 calls hung.
-      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
-    }),
-    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-  });
-  const body = await r.json().catch(() => null);
-  if (!r.ok) {
-    throw new Error(`Gemini ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
+  // Retry transient overload (503/429) once after a short backoff — Google's
+  // own guidance for demand spikes. Budget: 2 attempts x 20s + 8s backoff,
+  // plus the ~5s search, stays inside the 60s function cap.
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 8000));
+    try {
+      const r = await fetch(GEMINI_URL, {
+        method: "POST",
+        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
+          // level (medium) made live calls run past 45s. "low" keeps answers
+          // fast; our answers are short and grounded, not reasoning tasks.
+          // NO temperature: Google's guidance for Gemini 3 models is to leave
+          // temperature at its default (1.0) — lowering it "may cause looping
+          // or degraded performance", and our temperature: 0.2 calls hung.
+          generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
+        }),
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok) {
+        const err = new Error(`Gemini ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
+        if ((r.status === 503 || r.status === 429) && attempt === 0) { lastError = err; continue; }
+        throw err;
+      }
+      const text = body?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || "").join("").trim();
+      if (!text) throw new Error("Gemini returned no answer");
+      return text;
+    } catch (e) {
+      if (attempt === 0 && /503|429/.test(e.message)) { lastError = e; continue; }
+      throw e;
+    }
   }
-  const text = body?.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text || "").join("").trim();
-  if (!text) throw new Error("Gemini returned no answer");
-  return text;
+  throw lastError || new Error("Gemini request failed");
 }
 
 // --- Handler ---------------------------------------------------------------
