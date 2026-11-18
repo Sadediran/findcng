@@ -19,11 +19,13 @@
 import { json, sb, supabaseConfigured, rateLimit, isMissingTableError } from "./_lib.js";
 import { readFileSync } from "node:fs";
 
-// Single named constant — change the model here and nowhere else.
+// Model chain — 3.8-flash first, 3.5-flash-lite as the overload fallback.
 // 18 Nov 2026: gemini-2.5-flash is retired for new API users (Gemini 404);
-// Google's own error message directs new users to gemini-3.8-flash.
-const MODEL = "gemini-3.8-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Google's own error message directs new users to gemini-3.8-flash. The
+// lite model is Google's own recommended simpler alternative, and our
+// answers are short and grounded, so it is plenty when 3.8 is overloaded.
+const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+const geminiUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 const MAX_QUESTION = 500;
 const MAX_OUTPUT_TOKENS = 400;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
@@ -191,14 +193,15 @@ const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about C
 6. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. End with the source names for the key facts you used.`;
 
 async function askGemini(apiKey, prompt) {
-  // Retry transient overload (503/429) once after a short backoff — Google's
-  // own guidance for demand spikes. Budget: 2 attempts x 20s + 8s backoff,
+  // Model fallback chain: try each model once; on transient overload
+  // (503/429) wait 8s and try the next model. Budget: 2 x 20s + 8s backoff,
   // plus the ~5s search, stays inside the 60s function cap.
   let lastError = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 8000));
+  for (let i = 0; i < MODELS.length; i++) {
+    const model = MODELS[i];
+    if (i > 0) await new Promise((r) => setTimeout(r, 8000));
     try {
-      const r = await fetch(GEMINI_URL, {
+      const r = await fetch(geminiUrl(model), {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -215,16 +218,16 @@ async function askGemini(apiKey, prompt) {
       });
       const body = await r.json().catch(() => null);
       if (!r.ok) {
-        const err = new Error(`Gemini ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
-        if ((r.status === 503 || r.status === 429) && attempt === 0) { lastError = err; continue; }
+        const err = new Error(`Gemini ${model} ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
+        if ((r.status === 503 || r.status === 429) && i < MODELS.length - 1) { lastError = err; continue; }
         throw err;
       }
       const text = body?.candidates?.[0]?.content?.parts
         ?.map((p) => p.text || "").join("").trim();
-      if (!text) throw new Error("Gemini returned no answer");
+      if (!text) throw new Error(`Gemini ${model} returned no answer`);
       return text;
     } catch (e) {
-      if (attempt === 0 && /503|429/.test(e.message)) { lastError = e; continue; }
+      if (i < MODELS.length - 1 && /503|429/.test(e.message)) { lastError = e; continue; }
       throw e;
     }
   }
