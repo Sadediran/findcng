@@ -27,7 +27,10 @@ import { readFileSync } from "node:fs";
 const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
 const geminiUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 const MAX_QUESTION = 500;
-const MAX_OUTPUT_TOKENS = 400;
+// 1200, not 400: on thinking models the thinking tokens count toward the
+// output budget, and at 400 the model spent nearly all of it thinking and
+// returned one-sentence answers. The prompt still asks for ~150 words.
+const MAX_OUTPUT_TOKENS = 1200;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
 const SEARCH_TIMEOUT_MS = 5000;
 // Per-attempt timeout for one Gemini call (askGemini retries once on 503/429
