@@ -354,45 +354,61 @@ function stripSourcesLine(text) {
   return text;
 }
 
+async function askGeminiOnce(apiKey, prompt, model, timeoutMs) {
+  const r = await fetch(geminiUrl(model), {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
+      // level (medium) made live calls run past 45s. "low" keeps answers
+      // fast; our answers are short and grounded, not reasoning tasks.
+      // NO temperature: Google's guidance for Gemini 3 models is to leave
+      // temperature at its default (1.0) — lowering it "may cause looping
+      // or degraded performance", and our temperature: 0.2 calls hung.
+      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = await r.json().catch(() => null);
+  if (!r.ok) {
+    throw new Error(`Gemini ${model} ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
+  }
+  const text = body?.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text || "").join("").trim();
+  if (!text) throw new Error(`Gemini ${model} returned no answer`);
+  return text;
+}
+
 async function askGemini(apiKey, prompt) {
   // Model fallback chain: try each model once; on transient overload
   // (503/429) OR a timeout, move straight to the next model. Budget:
-  // 2 x 25s + ~5s search stays inside the 60s function cap.
+  // 2 x 25s + ~8s search stays inside the 60s function cap.
+  // 18 Nov 2026 ~18:10 WAT: the free tier was so overloaded at peak hours
+  // that BOTH models 503'd on about half the requests (Vercel logs show
+  // interleaved successes and "high demand" 503s within the same minute).
+  // The 503s come back FAST (~10s for the whole chain), so when the chain
+  // fails fast on overload, wait 6s and try the lite model once more —
+  // spikes often clear within seconds. Worst case (20s + 6s + 20s + 8s
+  // search) still fits the 60s cap; slow failures (timeouts) never retry.
+  const started = Date.now();
   let lastError = null;
   for (let i = 0; i < MODELS.length; i++) {
-    const model = MODELS[i];
     try {
-      const r = await fetch(geminiUrl(model), {
-        method: "POST",
-        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
-          // level (medium) made live calls run past 45s. "low" keeps answers
-          // fast; our answers are short and grounded, not reasoning tasks.
-          // NO temperature: Google's guidance for Gemini 3 models is to leave
-          // temperature at its default (1.0) — lowering it "may cause looping
-          // or degraded performance", and our temperature: 0.2 calls hung.
-          generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
-        }),
-        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-      });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) {
-        const err = new Error(`Gemini ${model} ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 400)}`);
-        if ((r.status === 503 || r.status === 429) && i < MODELS.length - 1) { lastError = err; continue; }
-        throw err;
-      }
-      const text = body?.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text || "").join("").trim();
-      if (!text) throw new Error(`Gemini ${model} returned no answer`);
-      return text;
+      return await askGeminiOnce(apiKey, prompt, MODELS[i], GEMINI_TIMEOUT_MS);
     } catch (e) {
       // Transient failures (overload OR timeout) fall through to the next
-      // model; anything else throws immediately.
+      // model; anything else stops the chain immediately.
       if (i < MODELS.length - 1 && /503|429|abort|timeout/i.test(e.message)) { lastError = e; continue; }
-      throw e;
+      lastError = e;
+      break;
     }
+  }
+  const elapsed = Date.now() - started;
+  if (lastError && /503|429/.test(lastError.message) && elapsed < 20000) {
+    console.error(`chat retry: chain failed in ${elapsed}ms on overload, retrying lite model once`);
+    await new Promise((r) => setTimeout(r, 6000));
+    return await askGeminiOnce(apiKey, prompt, MODELS[MODELS.length - 1], 20000);
   }
   throw lastError || new Error("Gemini request failed");
 }
