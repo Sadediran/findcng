@@ -28,8 +28,8 @@
  "with_coordinates": 464,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
-  "exact": 21,
-  "approximate": 360,
+  "exact": 22,
+  "approximate": 359,
   "town": 83
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",

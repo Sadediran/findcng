@@ -5,7 +5,7 @@
    returning visitor keeps the old shell until the service worker file
    itself changes. (18 Nov 2026: 2.3 shipped without a bump and Saheed's
    phone showed no updates at all until the tab was closed and reopened.) */
-const CACHE = "findcng-v2.3.7"; // bumped 18 Nov 2026 — chat sources removed entirely (Saheed: no sources shown at all); junk-result filter on web search
+const CACHE = "findcng-v2.3.8"; // bumped 18 Nov 2026 — CNG-038 BOVAS Ajibode pin refined to the canopy point (satellite-verified on the forecourt); exact 22 / approximate 359
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
