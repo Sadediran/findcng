@@ -1,7 +1,11 @@
 /* FindCNG Nigeria — service worker. Offline cache for the app shell and the
    station list, so the directory works with patchy signal at a station.
-   API calls are never cached: live reports must always be fresh. */
-const CACHE = "findcng-v2.2";
+   API calls are never cached: live reports must always be fresh.
+   BUMP CACHE ON EVERY RELEASE: the fetch handler is cache-first, so a
+   returning visitor keeps the old shell until the service worker file
+   itself changes. (18 Nov 2026: 2.3 shipped without a bump and Saheed's
+   phone showed no updates at all until the tab was closed and reopened.) */
+const CACHE = "findcng-v2.3";
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
