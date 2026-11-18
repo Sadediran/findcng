@@ -22,7 +22,9 @@
   let reportsLive = false;      // true once /api/reports has answered OK
   let userLoc = null;           // { lat, lng, label }
   let map = null, clusterLayer = null, userMarker = null;
-  let lightTiles = null, darkTiles = null, darkOn = false;
+  let baseLayers = null;        // { satellite, street, dark } tile layers for the main map
+  let mapLayer = "satellite";   // current base layer kind; persisted as findcng_maplayer
+  let tileFallbackArmed = true; // false once a tile-failure fallback has fired (re-armed by a manual switch)
   let routeMap = null, routeLayer = null, routePins = { from: null, to: null };
   let routeState = null;        // { routes, selected, stops, fallback }
   let currentStation = null;    // id open in the detail view
@@ -318,6 +320,85 @@
     const el = $("map");
     if (el) el.innerHTML = `<div class="empty" style="padding:60px 16px"><div class="big">🗺️</div><p><b>The map could not load.</b></p><p>${msg}</p><p>The station list, directory, safety hub and calculator still work — use the tabs at the bottom.</p></div>`;
   }
+  // ---------------- map layers (2.3) ----------------
+  // Three base layers; satellite (Esri World Imagery) is the default, like the
+  // NIPOST postcode finder. Choice persisted as findcng_maplayer.
+  // NOTE on the dark URL: CARTO's current docs list a keyed /rastertiles/ URL
+  // (https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=YOUR_KEY)
+  // but this app has no CARTO API key, and the legacy keyless URL below still
+  // serves HTTP 200, so it stays. The {r} placeholder is Leaflet's own retina
+  // token (vendored 1.9.4 substitutes "@2x" on retina displays, "" otherwise)
+  // and CARTO serves @2x tiles — verified, not a bug. If the dark (or
+  // satellite) layer ever does fail, watchTileErrors falls back to street.
+  const MAP_LAYERS = {
+    satellite: {
+      // Esri World Imagery — note the {z}/{y}/{x} order (unlike OSM/CARTO).
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      label: "Satellite",
+    },
+    street: {
+      url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      label: "Street",
+    },
+    dark: {
+      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      label: "Dark",
+    },
+  };
+  const MAP_LAYER_KEY = "findcng_maplayer";
+  function storedMapLayer() {
+    try {
+      const v = localStorage.getItem(MAP_LAYER_KEY);
+      if (v && MAP_LAYERS[v]) return v;
+      // Migration (2.3): honour the old dark toggle for existing users.
+      if (localStorage.getItem("findcng_darkmap") === "1") return "dark";
+    } catch { /* ignore */ }
+    return "satellite";
+  }
+  // Fresh layer instance per map (one L.tileLayer cannot live on two maps);
+  // the route-planner and registration maps share the user's layer choice.
+  function createBaseLayer(kind) {
+    const def = MAP_LAYERS[kind] || MAP_LAYERS.street;
+    return L.tileLayer(def.url, { maxZoom: 19, attribution: def.attribution });
+  }
+  function updateLayerSwitcher() {
+    document.querySelectorAll("[data-map-layer]").forEach((b) => {
+      const on = b.dataset.mapLayer === mapLayer;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+  function setMapLayer(kind, opts = {}) {
+    if (!map || !baseLayers || !MAP_LAYERS[kind]) return;
+    if (mapLayer === kind && map.hasLayer(baseLayers[kind])) { updateLayerSwitcher(); return; }
+    Object.values(baseLayers).forEach((l) => { if (map.hasLayer(l)) map.removeLayer(l); });
+    mapLayer = kind;
+    baseLayers[kind].addTo(map);
+    try { localStorage.setItem(MAP_LAYER_KEY, kind); } catch { /* ignore */ }
+    // A deliberate manual switch re-arms the fallback; a fallback disarms it
+    // so the street layer's own errors can never re-trigger it (no loop).
+    if (opts.fallbackFrom) tileFallbackArmed = false;
+    else if (kind !== "street") tileFallbackArmed = true;
+    updateLayerSwitcher();
+    if (opts.fallbackFrom) toast(MAP_LAYERS[opts.fallbackFrom].label + " map couldn't load — showing street map.");
+  }
+  // Tile-failure fallback: 3+ tile errors within 10 seconds on the satellite
+  // or dark layer means the provider is failing, not one bad tile — switch to
+  // the street layer so the map is never left broken or blank. The street
+  // layer itself is never watched, so the fallback cannot loop.
+  function watchTileErrors(layer, kind) {
+    let errors = [];
+    layer.on("tileerror", () => {
+      if (!tileFallbackArmed || mapLayer !== kind || !map || !map.hasLayer(layer)) return;
+      const now = Date.now();
+      errors = errors.filter((t) => now - t < 10000);
+      errors.push(now);
+      if (errors.length >= 3) setMapLayer("street", { fallbackFrom: kind });
+    });
+  }
   function initMap() {
     if (map) return;
     if (!leafletReady()) {
@@ -325,29 +406,20 @@
       return;
     }
     map = L.map("map", { zoomControl: true }).setView(F.NIGERIA_CENTRE, F.NIGERIA_ZOOM);
-    lightTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    });
-    darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    });
-    lightTiles.addTo(map);
-    try { darkOn = localStorage.getItem("findcng_darkmap") === "1"; } catch { darkOn = false; }
-    if (darkOn) { map.removeLayer(lightTiles); darkTiles.addTo(map); $("dark-toggle").setAttribute("aria-pressed", "true"); $("dark-toggle").textContent = "☀️ Light map"; }
+    baseLayers = {
+      satellite: createBaseLayer("satellite"),
+      street: createBaseLayer("street"),
+      dark: createBaseLayer("dark"),
+    };
+    watchTileErrors(baseLayers.satellite, "satellite");
+    watchTileErrors(baseLayers.dark, "dark");
+    mapLayer = storedMapLayer();
+    baseLayers[mapLayer].addTo(map);
+    try { localStorage.setItem(MAP_LAYER_KEY, mapLayer); } catch { /* ignore */ }
+    updateLayerSwitcher();
     map.on("click", (e) => setUserLoc(e.latlng.lat, e.latlng.lng, "Dropped pin"));
     map.on("moveend", renderMapMarkers);
     clusterLayer = L.layerGroup().addTo(map);
-  }
-  function toggleDarkMap() {
-    if (!map) return;
-    darkOn = !darkOn;
-    if (darkOn) { map.removeLayer(lightTiles); darkTiles.addTo(map); }
-    else { map.removeLayer(darkTiles); lightTiles.addTo(map); }
-    try { localStorage.setItem("findcng_darkmap", darkOn ? "1" : "0"); } catch { /* ignore */ }
-    $("dark-toggle").setAttribute("aria-pressed", String(darkOn));
-    $("dark-toggle").textContent = darkOn ? "☀️ Light map" : "🌙 Dark map";
   }
   function passesFilters(s) {
     if (filters.availableOnly && statusOf(s.id) !== "available") return false;
@@ -1082,10 +1154,7 @@
       if (routeMap) { routeMap.invalidateSize(); return; }
       if (!leafletReady()) return;
       routeMap = L.map("route-map", { zoomControl: true }).setView(F.NIGERIA_CENTRE, F.NIGERIA_ZOOM);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      }).addTo(routeMap);
+      createBaseLayer(storedMapLayer()).addTo(routeMap);
       routeLayer = L.layerGroup().addTo(routeMap);
       routeMap.on("click", (e) => {
         // Pin mode: the next tap sets whichever endpoint is waiting for a pin.
@@ -1447,10 +1516,7 @@
         return;
       }
       regMap = L.map("reg-map", { zoomControl: true }).setView(F.NIGERIA_CENTRE, F.NIGERIA_ZOOM);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      }).addTo(regMap);
+      createBaseLayer(storedMapLayer()).addTo(regMap);
       regMap.on("click", (e) => {
         $("reg-lat").value = e.latlng.lat.toFixed(6);
         $("reg-lng").value = e.latlng.lng.toFixed(6);
@@ -1599,7 +1665,8 @@
     $("postcode-go").addEventListener("click", postcodeGo);
     $("postcode-input").addEventListener("keydown", (e) => { if (e.key === "Enter") postcodeGo(); });
     $("gps-go").addEventListener("click", gpsGo);
-    $("dark-toggle").addEventListener("click", toggleDarkMap);
+    document.querySelectorAll("[data-map-layer]").forEach((b) =>
+      b.addEventListener("click", () => setMapLayer(b.dataset.mapLayer)));
     $("map-search-go").addEventListener("click", () => {
       $("station-search").value = $("map-search").value;
       listShown = 50; showView("stations"); renderStations();

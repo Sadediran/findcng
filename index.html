@@ -62,7 +62,11 @@
   <div class="loc-actions">
     <button class="btn outline small" id="gps-go">📍 Use my location</button>
     <button class="btn outline small" id="filter-btn">⚙️ Filters</button>
-    <button class="btn outline small" id="dark-toggle" aria-pressed="false">🌙 Dark map</button>
+    <div class="layer-switch" role="group" aria-label="Map style">
+      <button class="btn outline small on" data-map-layer="satellite" aria-pressed="true">🛰️ Satellite</button>
+      <button class="btn outline small" data-map-layer="street" aria-pressed="false">🗺️ Street</button>
+      <button class="btn outline small" data-map-layer="dark" aria-pressed="false">🌙 Dark</button>
+    </div>
   </div>
   <p id="postcode-msg" class="notice hidden"></p>
   <p id="loc-status" class="small" style="margin-bottom:0"></p>

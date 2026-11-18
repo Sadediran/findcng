@@ -185,6 +185,9 @@ input[type="file"] { width: 100%; min-height: 48px; }
 .locbar .btn { width: auto; flex: 0 0 auto; }
 .loc-actions { display: flex; gap: 8px; margin: 0; flex-wrap: wrap; }
 .loc-actions .btn { flex: 1; min-width: 0; }
+/* Map layer switcher (2.3): one segmented control, own row in the toolbar. */
+.layer-switch { display: flex; gap: 8px; flex: 1 1 100%; }
+.layer-switch .btn.on { background: var(--green); color: #fff; border-color: var(--green); }
 /* 360px: GPS gets its own row so its label never wraps to three lines. */
 #gps-go { flex-basis: 100%; }
 @media (min-width: 720px) { #gps-go { flex-basis: auto; } }
@@ -202,11 +205,12 @@ input[type="file"] { width: 100%; min-height: 48px; }
 .dot.finished, .dot.closed { background: var(--bad); }
 .dot.unconfirmed { background: var(--grey); }
 
-/* Map pins — teardrop for exact/approximate, dashed ring for town (area) pins. */
+/* Map pins — teardrop for exact/approximate, dashed ring for town (area) pins.
+   Thick white halos keep every pin readable on satellite imagery too. */
 .marker-pin {
   width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg); border: 2px solid #fff;
-  box-shadow: 0 2px 7px rgba(0,0,0,.42);
+  box-shadow: 0 2px 7px rgba(0,0,0,.5), 0 0 0 2.5px rgba(255,255,255,.95);
   display: flex; align-items: center; justify-content: center;
 }
 .marker-pin b { transform: rotate(45deg); color: #fff; font-size: 13.5px; font-weight: 800; }
@@ -215,12 +219,12 @@ input[type="file"] { width: 100%; min-height: 48px; }
 .marker-pin.finished, .marker-pin.closed { background: var(--bad); }
 .marker-pin.unconfirmed { background: var(--grey); }
 /* Approximate: a dashed halo says "near here, not exact". */
-.marker-pin.approx { box-shadow: 0 2px 7px rgba(0,0,0,.42), 0 0 0 4px rgba(255,255,255,.55), 0 0 0 6px rgba(217, 147, 0, .45); }
+.marker-pin.approx { box-shadow: 0 2px 7px rgba(0,0,0,.5), 0 0 0 4px rgba(255,255,255,.9), 0 0 0 6.5px rgba(217, 147, 0, .55); }
 /* Town / area pin: a dashed circle, never a precise teardrop. */
 .marker-pin.town {
   border-radius: 50%; transform: none;
   border: 2.5px dashed #fff;
-  box-shadow: 0 2px 7px rgba(0,0,0,.42), 0 0 0 4px rgba(217, 147, 0, .35);
+  box-shadow: 0 2px 7px rgba(0,0,0,.5), 0 0 0 3px rgba(255,255,255,.9), 0 0 0 6px rgba(217, 147, 0, .45);
   opacity: .96;
 }
 .marker-pin.town b { transform: none; }
@@ -398,7 +402,7 @@ footer.appfoot a { margin: 0 6px; }
 /* Marker clusters (lightweight grid clustering, plain JS) */
 .cluster-bubble {
   background: linear-gradient(180deg, #0d7d59, var(--green)); color: #fff; border: 3px solid #fff;
-  border-radius: 50%; box-shadow: 0 3px 10px rgba(0,0,0,.42);
+  border-radius: 50%; box-shadow: 0 3px 10px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.95);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums;
 }

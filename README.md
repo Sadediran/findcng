@@ -23,7 +23,9 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 
 Stack: plain HTML/CSS/JS (no framework), Leaflet + OpenStreetMap (Leaflet 1.9.4
 vendored in `js/`/`css/` — no CDN dependency, so the map works offline once
-cached; CARTO dark tiles as an option), Vercel serverless functions, Supabase (free tier) for reports +
+cached; three switchable base layers — Esri satellite imagery (the default),
+OpenStreetMap street, CARTO dark — with automatic fallback to street if the
+satellite or dark tiles fail), Vercel serverless functions, Supabase (free tier) for reports +
 submissions + confirmations + listing reports + certificate storage. Running cost ~₦0/month on free tiers.
 
 ## 2.1 redesign (Nov 2026)
