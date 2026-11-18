@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FindCNG Nigeria — Find gas near you, live</title>
+<meta name="description" content="Find CNG near you — live gas availability, verified conversion centres, route planning and safety advice, nationwide across Nigeria. Free, no account needed.">
+<meta name="keywords" content="CNG Nigeria, CNG stations Nigeria, gas near me, conversion centres, Pi-CNG, NIPOST postcode, CNG safety, CNG calculator">
+<meta name="author" content="Saheed — NADDC–NYSC CNG Retrofitting Training Programme">
+<link rel="canonical" href="https://findcng.vercel.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FindCNG Nigeria">
+<meta property="og:title" content="FindCNG Nigeria — Find gas near you, live">
+<meta property="og:description" content="Live CNG availability, verified conversion centres and route planning — nationwide across Nigeria. Free, no account needed.">
+<meta property="og:url" content="https://findcng.vercel.app/">
+<meta property="og:locale" content="en_NG">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="FindCNG Nigeria — Find gas near you, live">
+<meta name="twitter:description" content="Live CNG availability, verified conversion centres and route planning — nationwide across Nigeria.">
+<meta name="theme-color" content="#0b6e4f">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b6e4f'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23ffc61a' font-family='sans-serif' font-weight='bold'>C</text></svg>">
+<link rel="stylesheet" href="css/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">C</div>
+    <div>
+      <h1>FindCNG Nigeria</h1>
+      <p>Find gas near you — live availability, verified centres, nationwide.</p>
+    </div>
+  </div>
+  <div class="top-links">
+    <a href="#" onclick="showView('register');return false;">＋ Add your centre</a>
+    <a href="#" onclick="showView('about');return false;">About &amp; sources</a>
+  </div>
+</header>
+
+<main>
+<!-- ============ MAP ============ -->
+<section id="view-map" class="view active">
+  <div class="map-searchbar">
+    <input type="text" id="map-search" placeholder="Search stations, towns, operators…" aria-label="Search stations">
+    <button class="btn small" id="map-search-go">Search</button>
+  </div>
+  <div class="locbar">
+    <input type="text" id="postcode-input" placeholder="Your postcode — e.g. 300001" inputmode="text" autocomplete="postal-code" aria-label="Postcode">
+    <button class="btn small" id="postcode-go">Find</button>
+  </div>
+  <div class="loc-actions">
+    <button class="btn outline small" id="gps-go">📍 Use my location</button>
+    <button class="btn outline small" id="filter-btn">⚙️ Filters</button>
+    <button class="btn outline small" id="dark-toggle" aria-pressed="false">🌙 Dark map</button>
+  </div>
+  <p id="postcode-msg" class="notice hidden"></p>
+  <p id="loc-status" class="small"></p>
+
+  <div id="filter-panel" class="card hidden" role="dialog" aria-label="Map filters">
+    <h3 style="margin-top:0">Filters</h3>
+    <label class="toggle-row"><span><b>Available now</b> — only stations with gas reported in the last 2 hours</span>
+      <input type="checkbox" id="filter-available"></label>
+    <label class="toggle-row"><span><b>Out of gas only</b> — stations reported finished</span>
+      <input type="checkbox" id="filter-outages"></label>
+    <div class="field">
+      <span class="field-label">Station type</span>
+      <div class="chips" role="group" aria-label="Filter by station type">
+        <button class="chip" data-map-type="refuelling">⛽ Refuelling</button>
+        <button class="chip" data-map-type="conversion">🔧 Conversion</button>
+        <button class="chip" data-map-type="both">⛽🔧 Both</button>
+      </div>
+    </div>
+    <div class="field" id="category-field">
+      <span class="field-label">CNG station category <span class="hint">— only where the register gives it</span></span>
+      <div class="chips" id="category-chips" role="group" aria-label="Filter by station category"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">Operator</span>
+      <div id="operator-list" class="checklist"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn small" id="filter-apply" style="flex:1">Apply filters</button>
+      <button class="btn outline small" id="filter-reset" style="flex:1">Reset</button>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="split-map">
+      <div id="map" role="application" aria-label="Map of CNG stations with coordinates"></div>
+      <div id="view-stats" class="view-stats" aria-live="polite"></div>
+      <div class="legend">
+        <span><span class="dot available"></span> Gas available</span>
+        <span><span class="dot low"></span> Low / long queue</span>
+        <span><span class="dot finished"></span> Finished / closed</span>
+        <span><span class="dot unconfirmed"></span> Unconfirmed</span>
+      </div>
+      <p class="small" id="map-count">Loading stations…</p>
+      <p class="small">On the map: <b>R</b> = refuelling, <b>C</b> = conversion centre, <b>B</b> = both. Numbered circles group nearby stations — tap one to zoom in. Only stations with recorded coordinates appear on the map — the full list is on the Stations tab.</p>
+    </div>
+    <div class="split-list">
+      <div id="nearest-list"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Live coverage</h3>
+    <div id="home-stats"><p class="small">Loading coverage numbers…</p></div>
+    <p class="small" style="margin-bottom:0">Reports expire after <b>2 hours</b> — old information never misleads you. No account, no name, no phone number needed to report. <a href="#" onclick="showView('about');return false;">How it works →</a></p>
+  </div>
+
+  <div class="card factbox">
+    <h3 style="margin-top:0">Is CNG safe?</h3>
+    <p style="margin:0">A certified CNG system is safe — fake cylinders and quack installers are the danger. Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation. <a href="#" onclick="showView('safety');return false;">Read the safety hub →</a></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Quick links</h3>
+    <div class="chips">
+      <button class="chip" onclick="showView('route')">🛣️ Plan a route</button>
+      <button class="chip" onclick="showView('outages')">🔴 Out of gas</button>
+      <button class="chip" onclick="showView('calculator')">🧮 Savings calculator</button>
+      <button class="chip" onclick="showView('news')">📰 CNG news</button>
+      <button class="chip" onclick="showView('centres')">🔧 Check an installer</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STATIONS ============ -->
+<section id="view-stations" class="view">
+  <h2>All stations &amp; centres</h2>
+  <p class="lede" id="stations-lede">Every CNG refuelling station and conversion centre in the dataset. Search by name, town or operator.</p>
+  <div class="field">
+    <input type="text" id="station-search" placeholder="Search — e.g. NIPCO Benin, Fonnd, Kano" aria-label="Search stations">
+  </div>
+  <div class="field">
+    <label for="state-filter">State</label>
+    <select id="state-filter"><option value="">All states</option></select>
+  </div>
+  <div class="chips" role="group" aria-label="Filter by type">
+    <button class="chip" data-type="refuelling">⛽ Refuelling</button>
+    <button class="chip" data-type="conversion">🔧 Conversion</button>
+    <button class="chip" data-type="both">⛽🔧 Both</button>
+  </div>
+  <div class="chips" role="group" aria-label="Sort stations">
+    <button class="chip on" data-sort="nearest">📍 Nearest</button>
+    <button class="chip" data-sort="az">A–Z</button>
+    <button class="chip" data-sort="favs">★ Favourites</button>
+  </div>
+  <p class="result-count" id="station-count"></p>
+  <div id="station-results"></div>
+  <button class="btn outline hidden" id="station-more">Show more</button>
+  <p class="small" id="nodata-note" style="margin-top:14px"></p>
+</section>
+
+<!-- ============ CENTRES ============ -->
+<section id="view-centres" class="view">
+  <h2>Is your installer legit?</h2>
+  <p class="lede">Check any conversion centre against the Pi-CNG accredited list before you hand over your car — and your money.</p>
+  <div class="card">
+    <label for="installer-search" style="font-weight:700">Check an installer by name</label>
+    <div class="locbar" style="margin-top:8px">
+      <input type="text" id="installer-search" placeholder="Centre name — e.g. Fonnd Motor" aria-label="Installer name">
+      <button class="btn small" id="installer-go">Check</button>
+    </div>
+    <div id="installer-result"><p class="small">Type the centre's name as it appears on their signboard or receipt.</p></div>
+  </div>
+  <h3>Accredited conversion centres</h3>
+  <p class="small" id="centre-stats"></p>
+  <div class="field">
+    <input type="text" id="centre-search" placeholder="Search centres…" aria-label="Search centres">
+  </div>
+  <div class="field">
+    <label for="centre-state-filter">State</label>
+    <select id="centre-state-filter"><option value="">All states</option></select>
+  </div>
+  <p class="result-count" id="centre-count"></p>
+  <div id="centre-results"></div>
+  <button class="btn outline hidden" id="centre-more">Show more</button>
+  <div class="card warnbox">
+    <h3 style="margin-top:0">Before you convert</h3>
+    <p style="margin:0">Ask the centre to show its NADDC/Pi-CNG accreditation certificate. Check the certificate number. Never accept a welded, second-hand or cooking-gas cylinder — that is what causes explosions. <a href="#" onclick="showView('safety');return false;">Why it matters →</a></p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">What the badges mean</h3>
+    <p style="margin:0"><span class="badge acc">✓ Officially accredited</span> — matched on the Pi-CNG accredited centres register (checked 18 Nov 2026).<br>
+    <span class="badge ind">✓ Independently verified</span> — a centre that registered here and passed human verification (list cross-check, certificate inspection, phone confirmation), with the verification date shown.<br>
+    <span class="badge pend">⏳ Pending verification</span> — submitted and awaiting review; not listed publicly until approved.<br>
+    <span class="badge stale">⚠ Needs re-verification</span> — from a 2024 list; treat the details as unconfirmed until re-checked.</p>
+  </div>
+</section>
+
+<!-- ============ ROUTE PLANNER ============ -->
+<section id="view-route" class="view">
+  <h2>Plan a CNG route</h2>
+  <p class="lede">Driving between cities? Plan your refuelling stops before you leave — CNG cannot be bought in a jerrycan, so the route matters.</p>
+  <div class="card">
+    <div class="field">
+      <label for="route-from">From</label>
+      <select id="route-from-type" aria-label="Starting point type">
+        <option value="gps">My location (GPS)</option>
+        <option value="station">A station on the map</option>
+        <option value="place">A place name (town / area)</option>
+        <option value="pin">A point I tap on the map</option>
+      </select>
+      <input type="text" id="route-from" placeholder="Place name — e.g. Benin City" class="hidden" style="margin-top:8px" aria-label="Starting place">
+      <select id="route-from-station" class="hidden" style="margin-top:8px" aria-label="Starting station"></select>
+    </div>
+    <div class="field">
+      <label for="route-to">To</label>
+      <select id="route-to-type" aria-label="Destination type">
+        <option value="place">A place name (town / area)</option>
+        <option value="station">A station on the map</option>
+        <option value="gps">My location (GPS)</option>
+        <option value="pin">A point I tap on the map</option>
+      </select>
+      <input type="text" id="route-to" placeholder="Place name — e.g. Lagos" style="margin-top:8px" aria-label="Destination place">
+      <select id="route-to-station" class="hidden" style="margin-top:8px" aria-label="Destination station"></select>
+    </div>
+    <div class="field">
+      <label for="route-range">Your range on a full tank (km) <span class="hint">— how far you go on one fill; change it to match your car</span></label>
+      <input type="number" id="route-range" value="150" min="20" max="600" step="10">
+    </div>
+    <label class="toggle-row"><span><b>Plan refuelling stops automatically</b> — suggest stations along the route, spaced by your range</span>
+      <input type="checkbox" id="route-auto" checked></label>
+    <p id="route-msg" class="notice hidden"></p>
+    <button class="btn" id="route-plan">Plan my route</button>
+    <p class="small" style="margin-top:10px">Routing uses the free OSRM public service (OpenStreetMap roads). Place names are looked up with Nominatim (OpenStreetMap). If the routing service is unavailable, the app falls back to a straight-line estimate and says so plainly.</p>
+  </div>
+  <div id="route-out"></div>
+  <div id="route-map" style="height:380px;border-radius:14px;border:1px solid var(--line);z-index:0" class="hidden" role="application" aria-label="Route map"></div>
+</section>
+
+<!-- ============ STATION DETAIL ============ -->
+<section id="view-station" class="view">
+  <button class="btn ghost small" id="station-back" style="padding-left:0">← Back</button>
+  <div id="station-detail"></div>
+</section>
+
+<!-- ============ OUTAGES ============ -->
+<section id="view-outages" class="view">
+  <h2>Out of gas</h2>
+  <p class="lede">Stations drivers have reported as finished in the last 2 hours. Check here before you drive — and report a station when the gas comes back (“Back to normal”).</p>
+  <p class="result-count" id="outages-count"></p>
+  <div id="outages-list"></div>
+  <div class="card">
+    <p style="margin:0">A station is listed here only while a fresh “Gas finished” report is live (2 hours). After that it returns to Unconfirmed. If you are at a station on this list and gas is back, open it and tap <b>Back to normal</b>.</p>
+  </div>
+</section>
+
+<!-- ============ SAFETY ============ -->
+<section id="view-safety" class="view">
+  <h2>Is CNG safe?</h2>
+  <div class="chips" role="group" aria-label="Safety language">
+    <button class="chip on" data-lang="en">English</button>
+    <button class="chip" data-lang="pcm">Pidgin</button>
+  </div>
+  <div class="card factbox">
+    <p style="margin:0" id="safety-lead"><b>The short answer: a certified CNG system is safe. Fake cylinders and quack installers are the danger.</b><br><br>
+    Properly designed, certified and professionally installed automotive CNG systems are subject to strict safety standards and inspections. Unauthorised cylinders, uncertified conversion kits and improper installation increase the risk of serious incidents.<br><br>
+    Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation — fake or welded cylinders, cooking-gas cylinders, air-conditioner cylinders, or overfilling.</p>
+  </div>
+
+  <h3>What actually causes explosions</h3>
+  <div class="card" id="safety-causes">
+    <p><b>1. Fake or welded cylinders.</b> A local welder fabricates a cylinder from scrap metal. It was never designed or tested to hold gas at high pressure. This caused the Benin City explosion of October 2024 — 3 people severely injured, one leg amputated. The welder was arrested. <span class="small">(Source: Standards Organisation of Nigeria; Punch / BusinessDay, Oct 2024.)</span></p>
+    <p><b>2. The wrong cylinder entirely.</b> LPG cooking-gas cylinders and even air-conditioner cylinders have been fitted as CNG cylinders. They are not built for CNG pressure. One car was destroyed in September 2026 after an AC cylinder was fitted with AC pipe. <span class="small">(Source: Facebook video, Senior Advocate of Truth, Sep 2026.)</span></p>
+    <p><b>3. Overfilling.</b> Filling past the cylinder's safe limit. Kaduna police preliminary findings linked the April 2026 Kaduna bus explosion to overfilling — police spokesman Mansir Hassan said on 5 April 2026 that the bus “exploded due to overfilling of its gas tank”, and the Kaduna State Government (Commissioner Ahmed Maiyaki) said the explosion was “traced to a technical fault linked to overfilling”. The operator, Silver Luxury Travel, rejected the claim; Governor Uba Sani ordered a multi-agency probe; and no final finding has been published as of 18 November 2026. Note: the police described the bus as LNG-propelled; press reports called it CNG. <span class="small">(Sources: Kaduna police statement, 5 Apr 2026; Kaduna State Government; Punch, “Kaduna bus explosion caused by overfilled gas, not bomb — Police”, 5 Apr 2026.)</span></p>
+    <p style="margin-bottom:0"><b>4. Quack installers.</b> Roadside technicians without accreditation, fitting kits to engines that are not in good condition. The Minister of State for Petroleum Resources (Gas) has blamed unverified, uncertified conversions — many by roadside technicians — directly for the wave of explosions. <span class="small">(Source: Minister Ekperikpe Ekpo, reported 2026.)</span></p>
+  </div>
+
+  <h3>Every incident, and what caused it</h3>
+  <div class="card" style="overflow-x:auto">
+    <table class="incidents">
+      <tr><th>When</th><th>Where</th><th>Cause (as established)</th><th>Source</th></tr>
+      <tr><td>16–17 Oct 2024</td><td>Benin City, Edo</td><td>Cylinder fabricated by a local welder — welded, modified, not approved for CNG. 3 severely injured.</td><td>SON; Punch / BusinessDay</td></tr>
+      <tr><td>3 Oct 2025</td><td>Banex, Wuse 2, Abuja</td><td>Disputed — some eyewitnesses said electrical fault, not CNG. No casualties.</td><td>Eyewitness accounts, Oct 2025</td></tr>
+      <tr><td>Apr 2026</td><td>Mando Motor Park, Kaduna</td><td>Kaduna police preliminary findings link it to overfilling; the operator disputes this; a multi-agency probe was ordered; no final finding published.</td><td>Kaduna police, 5 Apr 2026; Punch</td></tr>
+      <tr><td>13 Sep 2026</td><td>Airport Road, Abuja</td><td>Unapproved, unsuitable auxiliary cylinder fitted to the vehicle (NADDC preliminary finding). No deaths.</td><td><a href="https://www.pci.gov.ng/press-releases/warning-unauthorised-conversions-abuja-incident-sept-2026.html" target="_blank" rel="noopener">Pi-CNG press release</a></td></tr>
+      <tr><td>Sep 2026</td><td>Undisclosed</td><td>Owner fitted an air-conditioner cylinder as a CNG cylinder, using AC pipe. No lives lost.</td><td>Facebook video, Senior Advocate of Truth</td></tr>
+      <tr><td>11 Nov 2026</td><td>Lagos–Ibadan Expressway, Berger</td><td>Gas explosion in a bus (EKY 798 YK, 18 occupants); exact technical cause under investigation at time of reporting. 17 rescued unhurt, 1 severe burns.</td><td>New Daily Prime; LASTMA, 11 Nov 2026</td></tr>
+    </table>
+    <p class="tiny" style="margin:8px 0 0">Sources: NADDC, SON and Pi-CNG statements and Punch / BusinessDay / Nairametrics reporting, Oct 2024 – Nov 2026. Full evidence base: the project's public sentiment report.</p>
+  </div>
+
+  <h3>Myth vs fact</h3>
+  <div id="safety-myths">
+    <div class="card myth"><p style="margin:0"><b>Myth:</b> “CNG cars are time bombs.”<br><b>Fact:</b> Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation — fake cylinders or quack fitting. A certified system, installed by an accredited centre, is built and inspected to strict standards.</p></div>
+    <div class="card fact"><p style="margin:0"><b>Myth:</b> “It will blow up in the heat.”<br><b>Fact:</b> CNG ignites at about 700°C — petrol ignites at about 455°C. CNG needs much more heat to catch fire. And CNG is lighter than air: if it leaks, it rises and disperses instead of pooling on the ground like petrol.</p></div>
+    <div class="card fact"><p style="margin:0"><b>Myth:</b> “Any cylinder will do.”<br><b>Fact:</b> Only certified automotive CNG cylinders — multi-layer steel or composite, pressure-tested. A cooking-gas cylinder or AC cylinder is not a CNG cylinder, whatever anyone tells you.</p></div>
+    <div class="card fact"><p style="margin:0"><b>Myth:</b> “Conversion is a one-time job.”<br><b>Fact:</b> Cylinders must be tested every 3 years. Ask your centre when your cylinder is due for its test.</p></div>
+  </div>
+
+  <h3>Stay safe — the checklist</h3>
+  <div class="card" id="safety-checklist">
+    <p>✅ Convert only at an <b>accredited centre</b> — check it on the Centres tab first.</p>
+    <p>✅ Ask to see the <b>accreditation certificate</b> and the cylinder's certification markings.</p>
+    <p>✅ Never accept a <b>welded, second-hand or cooking-gas cylinder</b>.</p>
+    <p>✅ Make sure your <b>engine is in good condition</b> before converting — CNG reveals existing engine problems.</p>
+    <p>✅ Get the cylinder <b>tested every 3 years</b>.</p>
+    <p style="margin-bottom:0">⚠️ If you smell gas or hear hissing: switch off, get out of the vehicle, move away, and go to an accredited centre. <b>Never try to fix a gas system yourself.</b></p>
+  </div>
+  <p class="small">Safety content is drawn from NADDC / SON / Pi-CNG findings and news reporting (Oct 2024 – Nov 2026). If in doubt, go to an accredited centre — never take DIY advice on gas systems from social media.</p>
+</section>
+
+<!-- ============ CALCULATOR ============ -->
+<section id="view-calculator" class="view">
+  <h2>How much would you save?</h2>
+  <p class="lede">CNG vs petrol, with your own numbers. Drivers report saving 50–75% on fuel — see what that means for you.</p>
+  <div class="card">
+    <div class="field">
+      <label for="calc-vehicle">Your vehicle <span class="hint">— remembered on this device</span></label>
+      <select id="calc-vehicle">
+        <option value="car">Car</option>
+        <option value="keke">Keke / tricycle</option>
+        <option value="bus">Bus / van</option>
+        <option value="truck">Truck</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="calc-km">How many km do you drive per day?</label>
+      <input type="number" id="calc-km" value="100" min="0" step="1">
+    </div>
+    <div class="field">
+      <label for="calc-days">Days per month</label>
+      <input type="number" id="calc-days" value="26" min="1" max="31" step="1">
+    </div>
+    <div class="field">
+      <label for="calc-kpl">Your fuel use (km per litre of petrol) <span class="hint">— typical value filled in; change it to match your car</span></label>
+      <input type="number" id="calc-kpl" value="10" min="1" step="0.5">
+    </div>
+    <div class="field">
+      <label for="calc-petrol">Petrol price (₦ per litre)</label>
+      <input type="number" id="calc-petrol" value="1370" min="0" step="1">
+    </div>
+    <div class="field">
+      <label for="calc-cng">CNG price (₦ per SCM)</label>
+      <input type="number" id="calc-cng" value="380" min="0" step="1">
+    </div>
+    <div class="field">
+      <label for="calc-cost">Conversion cost (₦) <span class="hint">— what you paid or were quoted; used for the payback time. Leave as 0 to use the official range for your vehicle instead.</span></label>
+      <input type="number" id="calc-cost" value="0" min="0" step="1000">
+    </div>
+  </div>
+  <div id="calc-out"></div>
+  <p class="small" id="price-note"></p>
+  <div class="card">
+    <h3 style="margin-top:0">Real drivers, real numbers</h3>
+    <p style="margin:0">Abuja taxi driver (160 km/day): ₦22,000/day on petrol → ₦6,000/day on CNG, about ₦412,000/month saved. Keke operator: ₦15,000–17,000/day → ₦3,500–4,000/day. A Lagos Bolt driver went from ₦10,000–15,000 by midday to ₦30,000–40,000 by midday. <span class="small">(Pi-CNG / State House videos, NURTW; Oct–Nov 2026. Promotional videos select their best cases — but independent forum and news figures point the same way.)</span></p>
+  </div>
+</section>
+
+<!-- ============ NEWS ============ -->
+<section id="view-news" class="view">
+  <h2>CNG news &amp; updates</h2>
+  <p class="lede">Dated developments in Nigeria's CNG programme, each with its original source. No rumours, no invented items.</p>
+  <div id="news-list">
+    <div class="card">
+      <p class="meta"><b>16 Nov 2026</b> · Punch</p>
+      <h3 style="margin-top:0">Pi-CNG chairman admits high costs, few stations are slowing adoption</h3>
+      <p style="margin:0">Pi-CNG &amp; EV Executive Chairman Ismaeel Ahmed admitted that high conversion costs and inadequate refuelling stations are slowing CNG adoption — the same two complaints drivers raise most. <span class="small">(Source: Punch, 16 Nov 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>11 Nov 2026</b> · New Daily Prime; LASTMA</p>
+      <h3 style="margin-top:0">Bus gas explosion on Lagos–Ibadan Expressway; LASTMA urges inspections</h3>
+      <p style="margin:0">A Toyota Hiace bus (EKY 798 YK) with 18 occupants suffered a gas explosion at Berger. 17 people were rescued unhurt; one male passenger suffered severe burns. The exact technical cause was under investigation at the time of reporting. LASTMA General Manager Olalekan Bakare-Oki urged CNG operators to prioritise regular professional inspections of gas storage and delivery systems. <span class="small">(Sources: New Daily Prime; LASTMA statement, 11 Nov 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>Nov 2026</b> · Pi-CNG</p>
+      <h3 style="margin-top:0">127 more refuelling stations reported in development</h3>
+      <p style="margin:0">127 additional CNG refuelling stations are reported in development across the country, on top of the 105 on the October register — part of the programme's push to cut the queues drivers face daily. <span class="small">(Source: Pi-CNG, November 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>4 Nov 2026</b> · Punch / NAN</p>
+      <h3 style="margin-top:0">National CNG Summit held in Abuja</h3>
+      <p style="margin:0">The National CNG Summit brought the programme, operators and regulators together in Abuja, chaired by Pi-CNG &amp; EV Executive Chairman Ismaeel Ahmed, as converted vehicles passed 120,000. <span class="small">(Sources: Punch; NAN, Nov 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>Oct 2026</b> · Punch (state-by-state check)</p>
+      <h3 style="margin-top:0">Fare-cut directive not implemented in 14 states, including Edo</h3>
+      <p style="margin:0">President Tinubu's 19 September directive — that CNG savings should reach passengers as lower fares by 1 October — was not implemented in Enugu, Anambra, Delta, Imo, Sokoto, Kebbi, Jigawa, Gombe, Edo, Plateau, Ondo, Osun, Oyo and Ogun, Punch found. Drivers say they keep fares high to recover conversion costs and lost queue hours. <span class="small">(Source: Punch, Oct 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>15 Oct 2026</b> · Pi-CNG refuelling stations register</p>
+      <h3 style="margin-top:0">Pi-CNG register lists 105 refuelling stations in 24 states + FCT</h3>
+      <p style="margin:0">The updated Pi-CNG refuelling stations register lists 105 operational stations across 24 states and the FCT — against roughly 120,000–140,000 converted vehicles, about 1,300 vehicles per station. <span class="small">(Sources: Pi-CNG register, pci.gov.ng/refuelling-stations.html, updated 15 Oct 2026; Independent.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>8 Oct 2026</b> · Federal Ministry of Finance briefing</p>
+      <h3 style="margin-top:0">120,000+ CNG vehicles, 400+ conversion centres, 96 stations</h3>
+      <p style="margin:0">A Federal Ministry of Finance briefing cited 120,000+ CNG vehicles, 400+ conversion centres, 96 refuelling stations, 550+ CNG buses, 30–50% lower fares where CNG operates, and ₦100bn+ in duty waivers. <span class="small">(Source: Federal Ministry of Finance briefing, 8 Oct 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>May 2026</b> · Pi-CNG programme updates</p>
+      <h3 style="margin-top:0">Kano corridor work advances; Diverse Autocare hub commissioned in Benin City</h3>
+      <p style="margin:0">Work advanced on the Kano CNG corridor, extending refuelling and conversion capacity in the North-West. In the same month, the Minister of State for Petroleum Resources (Gas), Ekperikpe Ekpo, commissioned the Diverse Autocare CNG hub on Sapele Road, Benin City. <span class="small">(Sources: Pi-CNG programme updates, May 2026.)</span></p>
+    </div>
+    <div class="card">
+      <p class="meta"><b>Sep 2025</b> · Punch; Pulse</p>
+      <h3 style="margin-top:0">CNG price rises to ₦380/SCM as subsidy support is withdrawn</h3>
+      <p style="margin:0">The CNG price rose from ₦230 to ₦380 per SCM for cars and buses (₦450 for trucks) after the Federal Government withdrew subsidy support in September 2025. At ₦380, CNG remains roughly 70–75% cheaper than petrol at ₦1,330–₦1,405 per litre — but drivers fear further rises. <span class="small">(Sources: Punch, 3 Sep 2025; Pulse.)</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HELP / FAQ ============ -->
+<section id="view-help" class="view">
+  <h2>Help &amp; questions</h2>
+  <div class="card">
+    <h3 style="margin-top:0">How do I find gas near me?</h3>
+    <p style="margin:0">Open the Map tab, enter your postcode or tap “Use my location”, and the nearest stations appear below the map, sorted by distance. Green means gas was reported available in the last 2 hours; red means a driver reported it finished.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">How do I report gas at a station?</h3>
+    <p style="margin:0">Open the station, tap “Report gas status here”, pick one of the four options, and add the queue time if you know it. No account needed. Your report stays live for 2 hours, then expires. If the gas comes back at a station marked finished, tap <b>Back to normal</b>.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">What do the badges mean?</h3>
+    <p style="margin:0"><b>Officially accredited</b> — matched on the Pi-CNG accredited centres register. <b>Independently verified</b> — registered here and passed human verification. <b>Pending verification</b> — submitted, awaiting review. <b>Needs re-verification</b> — from a 2024 list, not yet re-checked. See the Centres tab for the full explanation.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Why is a station not on the map?</h3>
+    <p style="margin:0">Only entries with recorded coordinates appear on the map. Coordinates are never guessed — an entry without them appears in the list with its address only. If you know a station's exact spot, ask the centre to register with a GPS pin.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Postcodes — how location works here</h3>
+    <p style="margin:0">Location works with the NIPOST postcode system: the old 6-digit area codes (e.g. 300001 for Benin City GPO) and the new 11-character digital postcodes launched 1 October 2026 (e.g. FC 02 A09 DB 09). A 6-digit code covers a whole district, so it centres the map approximately. An 11-character code identifies one building — but NIPOST does not give out building coordinates through its API, so the app asks you to set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Does it work offline?</h3>
+    <p style="margin:0">The station list and the app itself are cached on your phone, so the directory works with patchy signal. Live reports always need a connection — a stale report would mislead you, so the app never shows cached reports as live.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">How do I add my centre?</h3>
+    <p style="margin:0">Use “Add your centre” in the top menu. You will need your accreditation certificate (photo or scan, under 2 MB). Nothing goes live until a moderator verifies it — Pi-CNG list cross-check, certificate inspection, and a phone confirmation.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
+    <p style="margin:0">Open the station and tap “Report an incorrect listing” (or “Report a closure”). A moderator reviews it. Listing reports open once the database table is set up — until then the app will tell you plainly that they are not open yet.</p>
+  </div>
+</section>
+
+<!-- ============ PRIVACY ============ -->
+<section id="view-privacy" class="view">
+  <h2>Privacy</h2>
+  <p class="lede">Plain-language privacy notice, following the Nigeria Data Protection Act (NDPA).</p>
+  <div class="card">
+    <h3 style="margin-top:0">What we collect — and what we never do</h3>
+    <ul style="margin:0;padding-left:20px;font-size:15px">
+      <li><b>No accounts.</b> We never ask for your name, phone number or email to use the app or report gas.</li>
+      <li><b>Your location stays yours.</b> When you tap “Use my location” or enter a postcode, it is used only to find stations near you. It is never stored with your identity, and never sent anywhere except to show you nearby stations.</li>
+      <li><b>Reports are anonymous.</b> A report records only the station, the status, the time, and an anonymous technical fingerprint (to stop spam). It cannot identify you.</li>
+      <li><b>Centre submissions:</b> the centre's public phone is published if approved. Your private contact and your certificate photo are visible only to the moderator, never published.</li>
+      <li><b>No ads, no tracking for advertising, no selling data.</b></li>
+      <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your dark-map choice are stored in your own browser (localStorage). They never leave your phone.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">How long we keep things</h3>
+    <ul style="margin:0;padding-left:20px;font-size:15px">
+      <li><b>Availability reports:</b> live for 2 hours, then they stop counting. Stored rows are kept for up to 12 months for abuse review, then deleted.</li>
+      <li><b>Listing reports and confirmations:</b> kept while the issue is open, then for up to 12 months for moderation records.</li>
+      <li><b>Centre submissions:</b> approved centres stay listed while they are listed. Rejected submissions and their certificate photos are deleted after 6 months. Approved centres can ask for their listing to be removed at any time (see below).</li>
+      <li><b>Certificates:</b> stored in a private bucket, visible only to the moderator, never published. Deleted when the submission is deleted or the listing is removed.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Ask for removal or correction</h3>
+    <p style="margin:0">If a listing about your centre is wrong, or you want your centre's listing or your submission removed, contact the moderator and say which listing and why. Removal requests are actioned within 7 days.<br><br>
+    <b>Contact: [CONTACT TBD — a publishable contact address will be added here.]</b></p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Who is responsible</h3>
+    <p style="margin:0">FindCNG Nigeria is a NYSC Community Development Service (CDS) project by Saheed, a serving corps member in the NADDC–NYSC CNG Retrofitting Training Programme. This page will be updated if the project is handed over to another organisation.</p>
+  </div>
+</section>
+
+<!-- ============ REGISTER ============ -->
+<section id="view-register" class="view">
+  <h2>Add your centre</h2>
+  <p class="lede">Run an accredited conversion centre? Submit it for listing. <b>Nothing goes live until it passes verification</b> — Pi-CNG list cross-check, certificate inspection, and a phone confirmation. That is what keeps quacks out of the directory.</p>
+  <form id="reg-form" class="card" novalidate>
+    <div class="field">
+      <label for="reg-name">Centre name *</label>
+      <input type="text" id="reg-name" required maxlength="120" placeholder="As it appears on your signboard">
+    </div>
+    <div class="field">
+      <label for="reg-operator">Company / operator</label>
+      <input type="text" id="reg-operator" maxlength="120" placeholder="If different from the centre name">
+    </div>
+    <div class="field">
+      <label for="reg-address">Full address *</label>
+      <textarea id="reg-address" required maxlength="300" placeholder="Street, area, landmarks"></textarea>
+    </div>
+    <div class="field">
+      <label for="reg-city">City / town</label>
+      <input type="text" id="reg-city" maxlength="80" placeholder="e.g. Benin City">
+    </div>
+    <div class="field">
+      <label for="reg-state">State *</label>
+      <select id="reg-state" required>
+        <option value="">Choose a state</option>
+        <option>Abia</option><option>Adamawa</option><option>Akwa Ibom</option><option>Anambra</option>
+        <option>Bauchi</option><option>Bayelsa</option><option>Benue</option><option>Borno</option>
+        <option>Cross River</option><option>Delta</option><option>Ebonyi</option><option>Edo</option>
+        <option>Ekiti</option><option>Enugu</option><option>Federal Capital Territory</option><option>Gombe</option>
+        <option>Imo</option><option>Jigawa</option><option>Kaduna</option><option>Kano</option>
+        <option>Katsina</option><option>Kebbi</option><option>Kogi</option><option>Kwara</option>
+        <option>Lagos</option><option>Nasarawa</option><option>Niger</option><option>Ogun</option>
+        <option>Ondo</option><option>Osun</option><option>Oyo</option><option>Plateau</option>
+        <option>Rivers</option><option>Sokoto</option><option>Taraba</option><option>Yobe</option>
+        <option>Zamfara</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="reg-lga">LGA</label>
+      <input type="text" id="reg-lga" maxlength="80">
+    </div>
+    <div class="field">
+      <label for="reg-phone">Centre phone (public) *</label>
+      <input type="tel" id="reg-phone" required maxlength="20" placeholder="e.g. 0803 123 4567">
+    </div>
+    <div class="field">
+      <label for="reg-email">Centre email</label>
+      <input type="email" id="reg-email" maxlength="120">
+    </div>
+    <div class="field">
+      <label for="reg-services">Services offered</label>
+      <input type="text" id="reg-services" maxlength="300" placeholder="e.g. Car conversion, keke conversion, cylinder testing">
+    </div>
+    <div class="field">
+      <label for="reg-body">Accredited by *</label>
+      <select id="reg-body" required>
+        <option value="">Choose</option>
+        <option value="Pi-CNG">Pi-CNG</option>
+        <option value="NADDC">NADDC</option>
+        <option value="Pi-CNG/NADDC">Pi-CNG / NADDC</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="reg-number">Accreditation number / certificate reference *</label>
+      <input type="text" id="reg-number" required maxlength="120" placeholder="As shown on your certificate">
+    </div>
+    <div class="field">
+      <label for="reg-cert">Photo or scan of your accreditation certificate * <span class="hint">— required, under 2 MB. Only the moderator sees it; it is never published.</span></label>
+      <input type="file" id="reg-cert" accept="image/*,.pdf" required>
+    </div>
+    <div class="field">
+      <label>Your location on the map <span class="hint">— tap the map to drop a pin, or use GPS</span></label>
+      <div id="reg-map" style="height:260px;border-radius:12px;border:1px solid var(--line);z-index:0"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn outline small" id="reg-gps" style="flex:1">📍 Use my location</button>
+        <input type="text" id="reg-lat" placeholder="Latitude" inputmode="decimal" style="flex:1" aria-label="Latitude">
+        <input type="text" id="reg-lng" placeholder="Longitude" inputmode="decimal" style="flex:1" aria-label="Longitude">
+      </div>
+    </div>
+    <div class="field">
+      <label for="reg-contact">Your contact (private) <span class="hint">— your own name and phone, for the moderator to reach you. Never published.</span></label>
+      <input type="text" id="reg-contact" maxlength="120" placeholder="e.g. Musa Bello, 0803 123 4567">
+    </div>
+    <div class="field">
+      <label style="font-weight:400"><input type="checkbox" id="reg-declare" style="width:22px;height:22px;vertical-align:middle;margin-right:8px"> I declare that this information is true. I understand that false claims are removed and may be reported. *</label>
+    </div>
+    <p id="reg-msg" class="notice hidden"></p>
+    <button type="submit" class="btn">Submit for verification</button>
+    <p class="small" style="margin-top:10px">What happens next: a moderator cross-checks your centre against the Pi-CNG accredited list, inspects your certificate, and calls you. Approved centres are listed with an “Independently verified” badge and the verification date. Rejected submissions get a reason and can re-apply.</p>
+  </form>
+</section>
+
+<!-- ============ ABOUT ============ -->
+<section id="view-about" class="view">
+  <h2>About FindCNG Nigeria</h2>
+  <p class="lede">A public tool built by a corps member inside the CNG programme, for the drivers the programme serves.</p>
+  <div class="card">
+    <h3 style="margin-top:0">Who built it</h3>
+    <p style="margin:0">Saheed — a serving NYSC corps member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of 300), attached to Fonnd Motor, Benin City (previously Diverse Autocare). This is his Community Development Service (CDS) project. The code is open source; the station data is public fact.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">What it does</h3>
+    <p style="margin:0">FindCNG answers three questions: <b>is there gas near me right now, how long is the queue, and is that installer legit?</b> It maps CNG refuelling stations and accredited conversion centres nationwide, shows live availability reported by drivers, plans refuelling stops along a route, and explains safety in plain English and Pidgin.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Coverage — honest numbers</h3>
+    <div id="about-stats"><p class="small">Loading coverage numbers…</p></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">How live reports work</h3>
+    <p style="margin:0">Anyone can report gas status at a station — no account, no name, no phone number. A report stays live for <b>2 hours</b>, then the station goes back to “Unconfirmed” so old information never misleads anyone. Reports are public immediately because speed matters at a station; contradicted or abusive reports can be reviewed and hidden by a moderator. Other drivers can confirm a report with one tap (yes / not sure / no).</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">How verification works</h3>
+    <p style="margin:0">A centre is “Officially accredited” if it appears on the Pi-CNG accredited centres register (checked 18 Nov 2026). Centres that register here are verified by a human — list cross-check, certificate inspection, phone confirmation — before they are listed, and carry an “Independently verified” badge with the verification date. There is no live NADDC/Pi-CNG verification API, so verification is manual for now. Verification badges are reviewed annually; a badge is removed if verification lapses. Entries from 2024 lists carry a “Needs re-verification” badge until re-checked.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Data sources</h3>
+    <ul style="margin:0;padding-left:20px;font-size:15px">
+      <li>Pi-CNG refuelling stations register (pci.gov.ng, updated 15 Oct 2026)</li>
+      <li>Pi-CNG accredited conversion centres register (pci.gov.ng, extracted 18 Nov 2026 — 928 rows, 546 distinct centres)</li>
+      <li>Federal Government free conversion centres list (Jul 2024)</li>
+      <li>BOVAS operator locator (May 2026)</li>
+      <li>News reports (Punch, Nairametrics, BusinessDay, The Sun, Independent, Oct–Nov 2026)</li>
+    </ul>
+    <p class="small" style="margin:8px 0 0" id="about-coverage-note">Coordinates are never guessed — an entry without coordinates appears in the list with its address only. LGA data from the Pi-CNG register is unreliable (about 1 in 5 is wrong), so this app does not use LGA anywhere.</p>
+  </div>
+  <footer class="appfoot">
+    <a href="#" onclick="showView('register');return false;">Add your centre</a> · <a href="#" onclick="showView('privacy');return false;">Privacy</a> · <a href="#" onclick="showView('help');return false;">Help</a><br>
+    FindCNG Nigeria · November 2026
+  </footer>
+</section>
+
+<!-- ============ MORE ============ -->
+<section id="view-more" class="view">
+  <h2>More</h2>
+  <div class="card menu">
+    <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English + Pidgin</span></button>
+    <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
+    <button class="menu-item" onclick="showView('outages')">🔴 Out of gas <span>Stations drivers report as finished right now</span></button>
+    <button class="menu-item" onclick="showView('news')">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
+    <button class="menu-item" onclick="showView('help')">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
+    <button class="menu-item" onclick="showView('register')">＋ Add your centre <span>Register an accredited conversion centre</span></button>
+    <button class="menu-item" onclick="showView('about')">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
+    <button class="menu-item" onclick="showView('privacy')">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
+  </div>
+  <h3>★ Your favourite stations</h3>
+  <div id="fav-list"></div>
+</section>
+</main>
+
+<!-- ============ REPORT SHEET ============ -->
+<div class="sheet-backdrop" id="report-backdrop">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <button class="close-x" id="report-close" aria-label="Close">×</button>
+    <h2 id="report-title">Report gas status</h2>
+    <p class="small">No account needed. Your report stays live for 2 hours, then expires.</p>
+    <div class="report-grid">
+      <button class="report-btn" data-status="available">✅<br>Gas available</button>
+      <button class="report-btn" data-status="low">🟡<br>Low / long queue</button>
+      <button class="report-btn" data-status="finished">🔴<br>Gas finished</button>
+      <button class="report-btn" data-status="closed">⛔<br>Closed</button>
+    </div>
+    <div class="field">
+      <label for="report-queue">Queue time (minutes) — optional</label>
+      <input type="number" id="report-queue" min="0" max="600" placeholder="e.g. 30">
+    </div>
+    <div class="field">
+      <label for="report-pressure">Pressure OK? — optional</label>
+      <select id="report-pressure">
+        <option value="">Not sure / skip</option>
+        <option value="yes">Yes — full fill, good pressure</option>
+        <option value="no">No — low pressure / half fill</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="report-compressor">Compressor working? — optional</label>
+      <select id="report-compressor">
+        <option value="">Not sure / skip</option>
+        <option value="yes">Yes</option>
+        <option value="no">No — compressor faulty</option>
+      </select>
+    </div>
+    <p id="report-msg" class="notice hidden"></p>
+    <button class="btn" id="report-submit">Send report</button>
+  </div>
+</div>
+
+<!-- ============ LISTING REPORT SHEET ============ -->
+<div class="sheet-backdrop" id="listing-backdrop">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <button class="close-x" id="listing-close" aria-label="Close">×</button>
+    <h2 id="listing-title">Report this listing</h2>
+    <p class="small">Tell the moderator what is wrong. Nothing is published from this — a human reviews it.</p>
+    <div class="field">
+      <label>What is wrong?</label>
+      <label class="radio-row"><input type="radio" name="listing-type" value="incorrect" checked> The details are incorrect (name, address, phone)</label>
+      <label class="radio-row"><input type="radio" name="listing-type" value="closed"> This station / centre is closed for good</label>
+      <label class="radio-row"><input type="radio" name="listing-type" value="moved"> It has moved to a different address</label>
+      <label class="radio-row"><input type="radio" name="listing-type" value="other"> Something else</label>
+    </div>
+    <div class="field">
+      <label for="listing-details">Details — optional</label>
+      <textarea id="listing-details" maxlength="1000" placeholder="e.g. The phone number is wrong — the correct one is…"></textarea>
+    </div>
+    <p id="listing-msg" class="notice hidden"></p>
+    <button class="btn" id="listing-submit">Send listing report</button>
+  </div>
+</div>
+
+<div id="toast" class="hidden" style="position:fixed;left:16px;right:16px;bottom:76px;z-index:2000;background:#17211c;color:#fff;padding:14px 16px;border-radius:12px;font-size:15px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.3)"></div>
+
+<nav class="bottomnav" aria-label="Main navigation">
+  <button data-view="map" class="on"><span class="ico">🗺️</span>Map</button>
+  <button data-view="stations"><span class="ico">⛽</span>Stations</button>
+  <button data-view="centres"><span class="ico">🔧</span>Centres</button>
+  <button data-view="route"><span class="ico">🛣️</span>Route</button>
+  <button data-view="more"><span class="ico">⋯</span>More</button>
+</nav>
+
+<script src="js/leaflet.js"></script>
+<script src="js/data.js"></script>
+<script src="js/postcode.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

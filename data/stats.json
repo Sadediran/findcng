@@ -1,0 +1,201 @@
+{
+ "generated": "2026-11-18",
+ "total_records": 663,
+ "total_records_label": "Directory records — every station and centre entry in the dataset.",
+ "refuelling_locations": 129,
+ "refuelling_label": "Unique refuelling locations (refuelling-only + both).",
+ "conversion_centres": 564,
+ "conversion_label": "Unique conversion centres (conversion-only + both).",
+ "picng_register_matched": 525,
+ "picng_register_label": "Conversion centres matched on the Pi-CNG accredited centres register (checked 18 Nov 2026).",
+ "picng_refuel_register_matched": 105,
+ "picng_refuel_register_label": "Refuelling locations matched on the Pi-CNG refuelling stations register (updated 15 Oct 2026).",
+ "needs_reverification": 36,
+ "needs_reverification_label": "Entries from 2024 lists that need re-checking before they can be trusted.",
+ "single_source": 9,
+ "single_source_label": "Entries from one source only — need a second check.",
+ "states_with_data": 29,
+ "states_with_data_label": "States + FCT with at least one entry (of 37).",
+ "no_data_states": [
+  "Bauchi",
+  "Benue",
+  "Jigawa",
+  "Kebbi",
+  "Plateau",
+  "Taraba",
+  "Yobe",
+  "Zamfara"
+ ],
+ "with_coordinates": 213,
+ "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
+ "with_phone": 18,
+ "operators": [
+  {
+   "name": "Mide Premium Oil & Gas Ltd",
+   "count": 32
+  },
+  {
+   "name": "Fonnd Motor Manufacturing Co. Ltd",
+   "count": 26
+  },
+  {
+   "name": "NNPC Retail",
+   "count": 21
+  },
+  {
+   "name": "Greenville LNG",
+   "count": 19
+  },
+  {
+   "name": "NIPCO Gas Limited",
+   "count": 18
+  },
+  {
+   "name": "BOVAS and Company Ltd",
+   "count": 18
+  },
+  {
+   "name": "Femadec Energy Limited",
+   "count": 11
+  },
+  {
+   "name": "Ibile Oil and Gas",
+   "count": 10
+  },
+  {
+   "name": "Negus Enterprises Ltd",
+   "count": 9
+  },
+  {
+   "name": "GREEN KINETICS LTD",
+   "count": 8
+  },
+  {
+   "name": "11 PLC (NIPCO)",
+   "count": 7
+  },
+  {
+   "name": "Prime Motors and Mobility Solutions Ltd",
+   "count": 5
+  }
+ ],
+ "categories": [],
+ "per_state": [
+  {
+   "state": "Abia",
+   "count": 1
+  },
+  {
+   "state": "Adamawa",
+   "count": 16
+  },
+  {
+   "state": "Akwa Ibom",
+   "count": 8
+  },
+  {
+   "state": "Anambra",
+   "count": 1
+  },
+  {
+   "state": "Bayelsa",
+   "count": 1
+  },
+  {
+   "state": "Borno",
+   "count": 2
+  },
+  {
+   "state": "Cross River",
+   "count": 2
+  },
+  {
+   "state": "Delta",
+   "count": 20
+  },
+  {
+   "state": "Ebonyi",
+   "count": 1
+  },
+  {
+   "state": "Edo",
+   "count": 20
+  },
+  {
+   "state": "Ekiti",
+   "count": 10
+  },
+  {
+   "state": "Enugu",
+   "count": 14
+  },
+  {
+   "state": "Federal Capital Territory",
+   "count": 147
+  },
+  {
+   "state": "Gombe",
+   "count": 1
+  },
+  {
+   "state": "Imo",
+   "count": 5
+  },
+  {
+   "state": "Kaduna",
+   "count": 20
+  },
+  {
+   "state": "Kano",
+   "count": 72
+  },
+  {
+   "state": "Katsina",
+   "count": 22
+  },
+  {
+   "state": "Kogi",
+   "count": 7
+  },
+  {
+   "state": "Kwara",
+   "count": 15
+  },
+  {
+   "state": "Lagos",
+   "count": 188
+  },
+  {
+   "state": "Nasarawa",
+   "count": 13
+  },
+  {
+   "state": "Niger",
+   "count": 2
+  },
+  {
+   "state": "Ogun",
+   "count": 20
+  },
+  {
+   "state": "Ondo",
+   "count": 2
+  },
+  {
+   "state": "Osun",
+   "count": 2
+  },
+  {
+   "state": "Oyo",
+   "count": 32
+  },
+  {
+   "state": "Rivers",
+   "count": 18
+  },
+  {
+   "state": "Sokoto",
+   "count": 1
+  }
+ ]
+}
