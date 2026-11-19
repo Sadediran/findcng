@@ -3,52 +3,27 @@
    fetches /api/news and replaces them with the live feed. If the fetch
    fails (offline, or the API is down), the saved items stay on screen
    with a small note saying so. No news is ever invented here — the
-   seed below is the 9 items that used to be hardcoded in index.html
-   (same titles, summaries, sources, dates), kept in data/news-seed.json
-   as the single source of truth; keep both in sync when editing.
-   Loaded after js/app.js so window.showView exists to hook. */
+   seed is data/news-seed.json, the single source of truth (Phase 4:
+   the 9 items used to be duplicated inline here and in the JSON, which
+   could drift; now this module loads the JSON file, which the service
+   worker caches for offline use). Loaded after js/app.js so
+   window.showView exists to hook. */
 (function () {
   "use strict";
 
-  // Offline fallback: the 9 saved items, newest first.
-  var SEED_NEWS = [
-    { title: "Pi-CNG chairman admits high costs, few stations are slowing adoption",
-      summary: "Pi-CNG & EV Executive Chairman Ismaeel Ahmed admitted that high conversion costs and inadequate refuelling stations are slowing CNG adoption — the same two complaints drivers raise most.",
-      source_name: "Punch", source_url: "https://punchng.com/high-conversion-costs-inadequate-stations-slowing-cng-adoption-fg/?amp",
-      published_at: "2026-11-16T19:40:41Z", topic: "adoption" },
-    { title: "Bus gas explosion on Lagos–Ibadan Expressway; LASTMA urges inspections",
-      summary: "A Toyota Hiace bus (EKY 798 YK) with 18 occupants suffered a gas explosion at Berger. 17 people were rescued unhurt; one male passenger suffered severe burns. The exact technical cause was under investigation at the time of reporting. LASTMA General Manager Olalekan Bakare-Oki urged CNG operators to prioritise regular professional inspections of gas storage and delivery systems.",
-      source_name: "New Daily Prime; LASTMA", source_url: "https://newdailyprime.news/cng-bus-explosion-lagos-ibadan-expressway/",
-      published_at: "2026-11-11", topic: "safety" },
-    { title: "127 more refuelling stations reported in development",
-      summary: "127 additional CNG refuelling stations are reported in development across the country, on top of the 105 on the October register — part of the programme's push to cut the queues drivers face daily.",
-      source_name: "Daily Nigerian / NAN", source_url: "https://dailynigerian.com/nigerian-govt-establish-cng/",
-      published_at: "2026-11-04T14:38:58Z", topic: "infrastructure" },
-    { title: "National CNG Summit held in Abuja",
-      summary: "The National CNG Summit brought the programme, operators and regulators together in Abuja, chaired by Pi-CNG & EV Executive Chairman Ismaeel Ahmed, as converted vehicles passed 120,000.",
-      source_name: "ThisDay", source_url: "https://www.thisdaylive.com/2026/11/04/nigeria-plans-1000-new-cng-stations-to-drive-gas-adoption-cut-transport-costs/",
-      published_at: "2026-11-04", topic: "policy" },
-    { title: "Fare-cut directive not implemented in 14 states, including Edo",
-      summary: "President Tinubu's 19 September directive — that CNG savings should reach passengers as lower fares by 1 October — was not implemented in Enugu, Anambra, Delta, Imo, Sokoto, Kebbi, Jigawa, Gombe, Edo, Plateau, Ondo, Osun, Oyo and Ogun, Punch found. Drivers say they keep fares high to recover conversion costs and lost queue hours.",
-      source_name: "Punch, via KOIKIMEDIA", source_url: "https://koikimediainternationalnews.com/states-yet-to-implement-tinubus-cng-fare-reduction-directive/",
-      published_at: "2026-10-02", topic: "policy" },
-    { title: "Pi-CNG register lists 105 refuelling stations in 24 states + FCT",
-      summary: "The updated Pi-CNG refuelling stations register lists 105 operational stations across 24 states and the FCT — against roughly 120,000–140,000 converted vehicles, about 1,300 vehicles per station.",
-      source_name: "Pi-CNG refuelling stations register", source_url: "https://www.pci.gov.ng/refuelling-stations.html",
-      published_at: "2026-10-15", topic: "infrastructure" },
-    { title: "120,000+ CNG vehicles, 400+ conversion centres, 96 stations",
-      summary: "A Federal Ministry of Finance briefing cited 120,000+ CNG vehicles, 400+ conversion centres, 96 refuelling stations, 550+ CNG buses, 30–50% lower fares where CNG operates, and ₦100bn+ in duty waivers.",
-      source_name: "Federal Ministry of Finance briefing", source_url: "https://www.facebook.com/Finminnigeria/posts/pfbid0tdQgMFGwNr3Rnk2nQgktkdADABm7UBMS1AaiyeMLRPRJLHv46VKeAYAYQXD1CFXxl",
-      published_at: "2026-10-08", topic: "programme" },
-    { title: "Diverse Autocare CNG hub commissioned in Benin City",
-      summary: "The Minister of State for Petroleum Resources (Gas), Ekperikpe Ekpo, commissioned the Diverse Autocare CNG hub on Sapele Road, Benin City — Edo's first CNG refuelling station and conversion centre.",
-      source_name: "Punch", source_url: "https://punchng.com/fg-promotes-cng-adoption-with-edo-conversion-centre/",
-      published_at: "2026-05-26T23:02:32Z", topic: "infrastructure" },
-    { title: "CNG price rises to ₦380/SCM as subsidy support is withdrawn",
-      summary: "The CNG price rose from ₦230 to ₦380 per SCM for cars and buses (₦450 for trucks) after the Federal Government withdrew subsidy support in September 2025. At ₦380, CNG remains roughly 70–75% cheaper than petrol at ₦1,330–₦1,405 per litre — but drivers fear further rises.",
-      source_name: "Punch; Pulse", source_url: "https://www.pulse.ng/story/cng-price-hike-nigeria-subsidy-withdrawal-queues-2025090306014084467",
-      published_at: "2025-09-03", topic: "prices" }
-  ];
+  // Offline fallback: the saved items from data/news-seed.json, loaded
+  // once at init (the service worker caches the file, so this works
+  // offline after the first visit). Empty until loaded.
+  var seedItems = [];
+  function loadSeedFile() {
+    return fetch("data/news-seed.json")
+      .then(function (r) { return r.json(); })
+      .then(function (parsed) {
+        var items = Array.isArray(parsed) ? parsed : parsed.items || [];
+        seedItems = items;
+      })
+      .catch(function () { /* no seed: the live feed is still tried */ });
+  }
 
   var PAGE_SIZE = 20;
   var REFRESH_MS = 5 * 60 * 1000; // re-check while the News view is open
@@ -155,7 +130,7 @@
   }
 
   function renderSeed() {
-    state.items = sortNewestFirst(SEED_NEWS);
+    state.items = sortNewestFirst(seedItems);
     state.total = state.items.length;
     state.source = null; // status line stays empty until the first check
     state.fetchedAt = null;
@@ -214,8 +189,6 @@
 
   function init() {
     if (!$("news-list")) return; // not on a page with the News view
-    renderSeed(); // instant paint from the saved items
-    refresh();    // then replace with the live feed when it answers
     var more = $("news-more");
     if (more) more.addEventListener("click", loadMore);
     // Refresh each time the News view is opened, and every 5 minutes
@@ -233,6 +206,12 @@
       var view = $("view-news");
       if (view && view.classList.contains("active")) refresh();
     }, REFRESH_MS);
+    // Seed first (instant paint from the saved items, cached offline),
+    // then replace with the live feed when it answers.
+    loadSeedFile().then(function () {
+      renderSeed();
+      refresh();
+    });
   }
 
   if (document.readyState === "loading") {
@@ -246,8 +225,8 @@
   // when loaded) and getSeed() (the saved items, for offline/fallback).
   window.FindCNGNews = {
     refresh: refresh,
-    seedCount: SEED_NEWS.length,
+    seedCount: function () { return seedItems.length; },
     getItems: function () { return state.items.slice(); },
-    getSeed: function () { return sortNewestFirst(SEED_NEWS); },
+    getSeed: function () { return sortNewestFirst(seedItems); },
   };
 })();

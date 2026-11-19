@@ -77,6 +77,12 @@
     t._h = setTimeout(() => t.classList.add("hidden"), 4200);
   }
   function statusOf(id) {
+    // Phase 4 (§20): when live reports cannot be reached (offline, or
+    // the API is down), nothing is "available" — the last-known status
+    // is never presented as current. The detail page and home feed
+    // already withdrew live info in this state; this makes the cards,
+    // the map and the filters agree with them.
+    if (!reportsLive) return "unconfirmed";
     const r = reports.get(id);
     if (!r) return "unconfirmed";
     return (Date.now() - r.ts <= F.REPORT_TTL_MS) ? r.status : "unconfirmed";
@@ -477,7 +483,9 @@
     if (!box) return;
     if (!dataLoaded) { box.innerHTML = `<p class="small">Loading live reports…</p>`; return; }
     if (!reportsLive) {
-      box.innerHTML = `<p class="small">Live reports could not be reached — check your connection and reload. The station list is still accurate.</p>`;
+      box.innerHTML = navigator.onLine === false
+        ? `<p class="small">You are offline — live reports need a connection, so none is shown here. The station list below is the saved copy; availability appears again when you are back online.</p>`
+        : `<p class="small">Live reports could not be reached — check your connection and reload. The station list is still accurate.</p>`;
       return;
     }
     const fresh = [...reports.entries()]
@@ -1630,13 +1638,24 @@
   function renderOutages() {
     const box = $("outages-list");
     if (!box || !dataLoaded) return;
+    // Phase 4 (§20): when live reports cannot be reached, show NO outage
+    // list at all — the old code kept listing stations from the last
+    // known state, which presented possibly-stale availability as
+    // current. An outage is only shown while a fresh report is live.
+    if (!reportsLive) {
+      $("outages-count").textContent = navigator.onLine === false
+        ? "You are offline — live reports need a connection."
+        : "Live reports could not be reached — check your connection.";
+      box.innerHTML = `<div class="empty"><div class="big">📴</div><p><b>Live outages need a connection.</b></p><p>Outages are only shown while a fresh report is live (2 hours). Reconnect to see the current list — the station directory still works offline.</p></div>`;
+      return;
+    }
     // Finished OR closed (Phase 1): the map filter already treated closed
     // stations as outages, but this view only listed "finished".
     const list = stations.filter((s) => statusOf(s.id) === "finished" || statusOf(s.id) === "closed")
       .sort((a, b) => (reports.get(b.id)?.ts || 0) - (reports.get(a.id)?.ts || 0));
-    $("outages-count").textContent = reportsLive
-      ? (list.length ? list.length + " station(s) reported out of gas or closed in the last 2 hours" : "No station is currently reported out of gas. Good news — or no fresh reports yet.")
-      : "Live reports could not be reached — showing the last known state. Check your connection.";
+    $("outages-count").textContent = list.length
+      ? list.length + " station(s) reported out of gas or closed in the last 2 hours"
+      : "No station is currently reported out of gas. Good news — or no fresh reports yet.";
     if (!list.length) {
       box.innerHTML = `<div class="empty"><div class="big">✅</div><p><b>Nothing out of gas right now.</b></p><p>No station has a fresh “Gas finished” or “Closed” report. If you find one empty, report it so other drivers don't waste the trip.</p></div>`;
       return;
@@ -1771,7 +1790,9 @@
       : `<div class="detail-hero">${heroBody}</div>`;
     let statusBlock;
     if (!reportsLive) {
-      statusBlock = `<div class="notice">Live reports could not be reached — check your connection and reload. The listing below is still accurate.</div>`;
+      statusBlock = navigator.onLine === false
+        ? `<div class="notice">You are offline — live reports need a connection, so no availability is shown here. The listing below is the saved copy.</div>`
+        : `<div class="notice">Live reports could not be reached — check your connection and reload. The listing below is still accurate.</div>`;
     } else if (r && st !== "unconfirmed") {
       statusBlock =
         `<p><b>Live status: ${F.STATUS[st].label}</b> · reported ${timeAgo(r.ts)}` +
@@ -2894,6 +2915,29 @@
     loadVehicleProfile();
     $("price-note").textContent = F.PRICES.priceNote + " Prices as of " + F.PRICES.priceDate + ".";
     calc();
+    // Offline indicator + auto-sync (Phase 4, §20): the moment the
+    // browser reports offline, live availability is withdrawn at once
+    // (cached reports must never read as current) and the banner shows;
+    // on reconnect the live reports and news refresh automatically.
+    // The directory itself keeps working from the service-worker cache.
+    function updateOfflineBar() {
+      const bar = $("offline-bar");
+      if (!bar) return;
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      bar.classList.toggle("hidden", !offline);
+    }
+    window.addEventListener("offline", () => {
+      updateOfflineBar();
+      reportsLive = false;
+      refreshStatuses();
+    });
+    window.addEventListener("online", () => {
+      updateOfflineBar();
+      loadReports();
+      if (window.FindCNGNews) window.FindCNGNews.refresh();
+      toast("Back online — live reports refreshed.");
+    });
+    updateOfflineBar();
     // Offline cache (app shell + station list; API calls are never cached).
     if ("serviceWorker" in navigator) {
       // When a new service worker takes over, refresh once so the page

@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <header class="topbar">
   <div class="topbar-inner">
@@ -40,7 +41,8 @@
   </div>
 </header>
 
-<main>
+<main id="main">
+<div id="offline-bar" class="offline-bar hidden" role="status">📴 You are offline — showing the saved directory. Live gas reports need a connection, so no availability is shown as live right now. The station list and safety hub still work.</div>
 <!-- ============ MAP ============ -->
 <section id="view-map" class="view active">
   <div class="hero">
@@ -460,7 +462,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">Does it work offline?</h3>
-    <p style="margin:0">The station list and the app itself are cached on your phone, so the directory works with patchy signal. Live reports always need a connection — a stale report would mislead you, so the app never shows cached reports as live.</p>
+    <p style="margin:0">The station list, safety hub and calculator are cached on your phone, so the directory works with patchy signal — you can search the saved stations offline. Live reports always need a connection: the moment you go offline the app stops showing availability (a stale report would mislead you) and shows an offline banner instead; when you reconnect, live reports refresh automatically. The news page shows saved items offline with a note saying so.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">How does a centre get listed?</h3>
@@ -653,6 +655,7 @@
       <li><b>Reports are anonymous.</b> A report records only the station, the status, the time, and an anonymous technical fingerprint (to stop spam). It cannot identify you.</li>
       <li><b>No ads, no tracking for advertising, no selling data.</b></li>
       <li><b>AI chat:</b> when you ask a question in “Ask anything”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
+      <li><b>Operator portal:</b> if you register a centre, claim a listing, or send an operator update, we ask for your business name and a phone number or email so the moderator can verify you. Those contact details are private — only the moderator sees them, they are never published on a listing, and they are never shared with anyone else.</li>
       <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your map style choice are stored in your own browser (localStorage). They never leave your phone.</li>
     </ul>
   </div>
@@ -661,6 +664,8 @@
     <ul style="margin:0;padding-left:20px;font-size:15px">
       <li><b>Availability reports:</b> live for 2 hours, then they stop counting. Stored rows are kept for up to 12 months for abuse review, then deleted.</li>
       <li><b>Listing reports and confirmations:</b> kept while the issue is open, then for up to 12 months for moderation records.</li>
+      <li><b>Operator submissions:</b> kept while the submission is open, then for up to 12 months for moderation records. Contact details are deleted with the submission.</li>
+      <li><b>Audit log:</b> admin actions (who did what, when) are kept for up to 12 months for accountability. The log records the admin role, never a passcode or a submitter's contact details.</li>
     </ul>
   </div>
   <div class="card">

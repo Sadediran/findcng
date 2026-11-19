@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.3.4"; // bumped 19 Nov 2026 — Phase 4 fix: operator station search matches multi-word queries across name/city/state/address (found by the CSP smoke test: "NIPCO Benin" found nothing). Earlier: Content Security Policy (script-src 'self', no unsafe-inline) + all inline onclick/onerror handlers converted to data attributes + one delegated listener. Earlier v3.3.2: multilingual safety; v3.3.1: admin dashboard; v3.3.0: operator portal
+const CACHE = "findcng-v3.3.5"; // bumped 19 Nov 2026 — Phase 4: offline honesty (live availability withdrawn the moment the browser reports offline; outages show nothing stale; offline banner + auto-sync), news seed deduped to data/news-seed.json, skip link, privacy page discloses operator-portal data. Earlier v3.3.4: operator search fix; v3.3.3: CSP (script-src 'self', no unsafe-inline) + all inline onclick/onerror handlers converted to data attributes + one delegated listener. Earlier v3.3.2: multilingual safety; v3.3.1: admin dashboard; v3.3.0: operator portal
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
