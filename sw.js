@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.11"; // bumped 19 Nov 2026 — chat backup switched from Groq (sign-up blocked) to OpenRouter free (openrouter/free router; needs OPENROUTER_API_KEY in Vercel env + redeploy to activate)
+const CACHE = "findcng-v3.0.0"; // bumped 19 Nov 2026 — Phase 1 of the master transformation: homepage restructure (§5), 10-section navigation (§4), Postcode Explorer + Coverage views, API hardening (station validation, report dedupe, fail-closed admin), build-time name cleaning
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

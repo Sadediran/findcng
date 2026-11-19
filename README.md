@@ -28,6 +28,32 @@ tiles fail; the CARTO dark layer was removed in 2.4 because CARTO's keyless
 dark endpoint died), Vercel serverless functions, Supabase (free tier) for reports +
 confirmations + listing reports. Running cost ~₦0/month on free tiers.
 
+## 3.0 (19 Nov 2026) — Phase 1 of the master transformation
+
+- **Homepage restructured** (§5): hero "Find CNG. Find Confidence." with
+  three wired primary actions; sections in order below the map — live
+  availability feed (fresh reports only), conversion-centre preview,
+  national statistics, postcode discovery intro, savings teaser (computed
+  from real prices), safety, latest updates.
+- **Navigation** (§4): bottom nav is now Home · Stations · Centres · Live ·
+  More; the More menu is grouped (Discover / Learn & save / About &
+  support). New views: **Postcode Explorer** (parse + explain 6-digit and
+  11-character codes with the existing postcode module and an honest
+  sandbox note — this is NOT the Phase 2 NIPOST integration) and
+  **Coverage & data** (per-state table, no-data states, pin precision —
+  all from `stats.json`).
+- **API hardening:** POST reports/confirmations/listing-reports reject
+  unknown station IDs; 10-minute same-reporter same-status dedupe;
+  admin passcode fails closed when unset (no default); error messages no
+  longer leak database internals; security headers in `vercel.json`.
+- **Data cleaning:** `build-data.py` normalises operator casing (most
+  readable variant), whitespace, trailing address punctuation and repeated
+  operator prefixes in names (20 names, 67 addresses, 20 operators).
+  Display-only — no entry deleted, merged or moved.
+- **Fixes:** `?view=station` with no station open goes home; stats render
+  survives missing keys; outages include closed stations; calculator gains
+  a daily-saving row + copy-my-summary; Escape closes the sheets.
+
 ## 2.5 (18 Nov 2026) — centre self-registration removed
 
 Saheed reversed his own 18 Nov 00:26 WAT design decision (centre
@@ -201,7 +227,7 @@ base) and `NIPOST-POSTCODE-RESEARCH.md` (postcode system).
 
 | File | What it is |
 |---|---|
-| `index.html` | The app (Map, Stations, Centres, Safety, Calculator, News, Outages, Help, Privacy, About, More, station detail) |
+| `index.html` | The app (Home/Map, Stations, Centres, Live/Outages, Safety, Calculator, News, Chat, Postcode Explorer, Coverage, Help, Privacy, About, More, station detail) |
 | `admin.html` | Moderator queue (passcode-gated): listing reports |
 | `css/style.css` | All styles, mobile-first |
 | `js/app.js` | Map + clustering, lists, reports, confirmations, calculator |
