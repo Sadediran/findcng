@@ -21,8 +21,17 @@ Rules (do not weaken):
   Ikeja/Abuja/Ekpoma are well-known town centres, flagged approximate.
   They are used ONLY to centre the map for a postcode search — never
   attached to a station.
+- NAME CLEANING (Phase 1, 19 Nov 2026): the master dataset carries raw
+  register names — operator casing varies ("SAFE AUTOGAS LTD" vs
+  "Safe Autogas Ltd"), some names repeat the operator after the em dash,
+  some addresses end with a stray comma/period, and one name has a double
+  space. Those are normalised HERE at build time (never in the master —
+  the merge pipeline would reintroduce the raw forms). Normalisation is
+  display-only: it never deletes, merges or moves an entry, and every
+  change is printed so it can be audited.
 """
 import json
+import re
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -70,18 +79,101 @@ def compact_source(sources):
     return "Public lists"
 
 
+# --- Name cleaning (Phase 1) ----------------------------------------------
+# Canonical operator casing: among the spelling variants of one operator
+# (grouped case-insensitively), pick the most READABLE form — not the most
+# common one, because the register's dominant spelling is often ALL-CAPS
+# ("SAFE AUTOGAS LTD" outnumbers "Safe Autogas Ltd" 2:1). Score (lower wins):
+#   +10  the whole name is ALL-CAPS
+#   +1   per word starting lowercase, except small words (and/of/the/...)
+# Ties break toward the most common spelling. Single-variant operators are
+# untouched, so genuine acronyms (e.g. "11 PLC (NIPCO)") stay as they are.
+_SMALL_WORDS = {"and", "of", "the", "for", "a", "an", "&", "in", "on", "at"}
+
+
+def _readability_penalty(form):
+    cased = [c for c in form if c.isalpha()]
+    score = 10 if cased and all(c.isupper() for c in cased) else 0
+    for word in re.split(r"[\s\-]+", form):
+        w = word.strip(".,()")
+        if w and w[0].islower() and w.lower() not in _SMALL_WORDS:
+            score += 1
+    return score
+
+
+def _operator_canonical(entries):
+    by_lower = {}
+    for e in entries:
+        op = e.get("operator")
+        if not op:
+            continue
+        by_lower.setdefault(op.lower(), Counter())[op] += 1
+    canon = {}
+    for lower, counts in by_lower.items():
+        best = sorted(counts.items(),
+                      key=lambda kv: (_readability_penalty(kv[0]), -kv[1]))[0][0]
+        for form in counts:
+            canon[form] = best
+    return canon
+
+
+def clean_name(name, operator):
+    """Collapse whitespace; use the canonical operator spelling for the
+    head when the head IS the operator ("PENTSERVE… — X" -> "Pentserve… — X");
+    drop a repeated operator prefix after the em dash
+    ("OPERATOR — OPERATOR Place" -> "OPERATOR — Place")."""
+    if not name:
+        return name
+    out = re.sub(r"\s+", " ", str(name)).strip()
+    if operator and " — " in out:
+        head, tail = out.split(" — ", 1)
+        if head.lower() == operator.lower():
+            head = operator
+        if tail.lower().startswith(operator.lower()):
+            rest = tail[len(operator):].strip()
+            if rest:
+                out = head + " — " + rest
+                return out
+        out = head + " — " + tail
+    return out
+
+
+def clean_address(address):
+    """Collapse whitespace; strip a trailing comma/period left by the
+    register export ("... Road, " -> "... Road")."""
+    if not address:
+        return address
+    out = re.sub(r"\s+", " ", str(address)).strip()
+    out = out.rstrip(",").rstrip(".").strip()
+    return out
+
+
+OPERATOR_CANON = _operator_canonical(master)
+CLEAN_LOG = {"names": [], "addresses": [], "operators": []}
+
+
 stations = []
 for e in master:
     sources = e.get("sources") or []
     joined = " | ".join(sources)
     on_centres_register = "conversion-centers.html" in joined
     on_refuel_register = "refuelling-stations.html" in joined
+    # Name cleaning (Phase 1): display-only normalisation, logged below.
+    operator = OPERATOR_CANON.get(e.get("operator"), e.get("operator"))
+    if operator != e.get("operator"):
+        CLEAN_LOG["operators"].append((e["id"], e.get("operator"), operator))
+    name = clean_name(e["name"], operator)
+    if name != e["name"]:
+        CLEAN_LOG["names"].append((e["id"], e["name"], name))
+    address = clean_address(e.get("address"))
+    if address != e.get("address"):
+        CLEAN_LOG["addresses"].append((e["id"], e.get("address"), address))
     entry = {
         "id": e["id"],
-        "name": e["name"],
+        "name": name,
         "type": e["type"],                    # refuelling | conversion | both
-        "operator": e.get("operator"),
-        "address": e.get("address"),
+        "operator": operator,
+        "address": address,
         "city": e.get("city"),
         "state": e.get("state"),
         "zone": e.get("zone"),
@@ -130,6 +222,14 @@ print("stations.json:", len(stations), "entries,",
       sum(1 for s in stations if s.get("hours")), "with hours,",
       sum(1 for s in stations if s.get("services")), "with services,",
       sum(1 for s in stations if s.get("price") is not None), "with price")
+# Name-cleaning audit log (Phase 1): every display-only change, printed.
+print("name cleaning: %d names, %d addresses, %d operators normalised"
+      % (len(CLEAN_LOG["names"]), len(CLEAN_LOG["addresses"]),
+         len(CLEAN_LOG["operators"])))
+for kind, singular in (("names", "name"), ("addresses", "address"),
+                         ("operators", "operator")):
+    for eid, before, after in CLEAN_LOG[kind]:
+        print(f"  {singular} {eid}: {before!r} -> {after!r}")
 
 # --- Honest statistics (computed, never hardcoded) -------------------------
 states_present = sorted({s["state"] for s in stations if s.get("state")})
@@ -225,7 +325,8 @@ import urllib.parse
 BASE = "https://findcng.vercel.app"
 urls = [("", "1.0", "daily")]
 for view in ["stations", "centres", "safety", "calculator",
-             "news", "outages", "help", "about", "privacy"]:
+             "news", "outages", "help", "about", "privacy",
+             "coverage", "postcode", "chat"]:
     urls.append((f"?view={view}", "0.8", "weekly"))
 for s in states_present:
     urls.append((f"?state={urllib.parse.quote(s)}", "0.7", "weekly"))

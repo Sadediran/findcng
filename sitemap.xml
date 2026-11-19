@@ -61,6 +61,24 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://findcng.vercel.app/?view=coverage</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://findcng.vercel.app/?view=postcode</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://findcng.vercel.app/?view=chat</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://findcng.vercel.app/?state=Abia</loc>
     <lastmod>2026-11-19</lastmod>
     <changefreq>weekly</changefreq>
