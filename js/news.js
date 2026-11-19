@@ -148,6 +148,10 @@
       list.innerHTML = state.items.map(cardHtml).join("");
     }
     renderStatus();
+    // Phase 1: the homepage "Latest CNG updates" section listens for this.
+    if (typeof document !== "undefined" && document.dispatchEvent) {
+      document.dispatchEvent(new CustomEvent("findcng:news"));
+    }
   }
 
   function renderSeed() {
@@ -238,5 +242,12 @@
   }
 
   // Exposed for debugging and for verify checks: window.FindCNGNews.refresh()
-  window.FindCNGNews = { refresh: refresh, seedCount: SEED_NEWS.length };
+  // Phase 1: the homepage reads the feed through getItems() (live items
+  // when loaded) and getSeed() (the saved items, for offline/fallback).
+  window.FindCNGNews = {
+    refresh: refresh,
+    seedCount: SEED_NEWS.length,
+    getItems: function () { return state.items.slice(); },
+    getSeed: function () { return sortNewestFirst(SEED_NEWS); },
+  };
 })();

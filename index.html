@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FindCNG Nigeria — Find gas near you, live</title>
+<title>FindCNG Nigeria — Find CNG. Find Confidence.</title>
 <meta name="description" content="Find CNG near you — live gas availability, verified conversion centres and safety advice, nationwide across Nigeria. Free, no account needed.">
 <meta name="keywords" content="CNG Nigeria, CNG stations Nigeria, gas near me, conversion centres, Pi-CNG, NIPOST postcode, CNG safety, CNG calculator">
 <meta name="author" content="ED/26B/2316 — NADDC–NYSC CNG Retrofitting Training Programme">
 <link rel="canonical" href="https://findcng.vercel.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FindCNG Nigeria">
-<meta property="og:title" content="FindCNG Nigeria — Find gas near you, live">
+<meta property="og:title" content="FindCNG Nigeria — Find CNG. Find Confidence.">
 <meta property="og:description" content="Live CNG availability, verified conversion centres and safety advice — nationwide across Nigeria. Free, no account needed.">
 <meta property="og:url" content="https://findcng.vercel.app/">
 <meta property="og:locale" content="en_NG">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="FindCNG Nigeria — Find gas near you, live">
+<meta name="twitter:title" content="FindCNG Nigeria — Find CNG. Find Confidence.">
 <meta name="twitter:description" content="Live CNG availability, verified conversion centres and safety advice — nationwide across Nigeria.">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.json">
@@ -45,8 +45,13 @@
 <section id="view-map" class="view active">
   <div class="hero">
     <p class="hero-eyebrow">Nigeria · Live CNG tracker</p>
-    <h2 class="hero-title">Find CNG near you.</h2>
-    <p class="hero-sub">Live availability, verified centres, nationwide — free, no account needed.</p>
+    <h2 class="hero-title">Find CNG. Find Confidence.</h2>
+    <p class="hero-sub">Discover CNG refuelling stations, verify availability, locate accredited conversion centres and explore Nigeria's growing CNG infrastructure.</p>
+    <div class="hero-actions">
+      <button class="btn yellow small" id="hero-nearby">📍 Find nearby stations</button>
+      <button class="btn small hero-ghost" id="hero-centres">🔧 Explore conversion centres</button>
+      <button class="btn small hero-ghost" id="hero-postcode">✉️ Search by postcode</button>
+    </div>
     <div id="hero-stats" class="hero-stats" aria-live="polite"></div>
   </div>
   <div class="card search-card">
@@ -116,10 +121,36 @@
     </div>
   </div>
 
+  <!-- Homepage sections, in order (§5): live availability, conversion
+       centres, national statistics, postcode discovery, savings teaser,
+       safety, latest updates. Nearby stations live in the split list
+       above. Every section renders from real data — nothing invented. -->
+  <div class="card" id="home-live-card">
+    <h3 style="margin-top:0">Live availability</h3>
+    <div id="home-live"><p class="small">Loading live reports…</p></div>
+    <p class="small" style="margin-bottom:0"><a href="#" onclick="showView('outages');return false;">See stations out of gas →</a></p>
+  </div>
+
+  <div class="card" id="home-centres-card">
+    <h3 style="margin-top:0">Conversion centres near you</h3>
+    <div id="home-centres"><p class="small">Loading centres…</p></div>
+  </div>
+
   <div class="card">
-    <h3 style="margin-top:0">Live coverage</h3>
+    <h3 style="margin-top:0">National CNG statistics</h3>
     <div id="home-stats"><p class="small">Loading coverage numbers…</p></div>
     <p class="small" style="margin-bottom:0">Reports expire after <b>2 hours</b> — old information never misleads you. No account, no name, no phone number needed to report. <a href="#" onclick="showView('about');return false;">How it works →</a></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Find your way with your postcode</h3>
+    <p style="margin:0">Every building in Nigeria now has its own 11-character digital postcode. Enter your 6-digit area code above to centre the map on your district, or your 11-character building code to check it and save it as your label — then set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. <a href="#" onclick="showView('postcode');return false;">Explore postcodes →</a></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">How much would you save?</h3>
+    <div id="home-savings"><p class="small">Loading…</p></div>
+    <p style="margin:8px 0 0"><a href="#" onclick="showView('calculator');return false;">Run the savings calculator with your own numbers →</a></p>
   </div>
 
   <div class="card factbox">
@@ -128,14 +159,9 @@
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0">Quick links</h3>
-    <div class="chips">
-      <button class="chip" onclick="showView('outages')">🔴 Out of gas</button>
-      <button class="chip" onclick="showView('calculator')">🧮 Savings calculator</button>
-      <button class="chip" onclick="showView('news')">📰 CNG news</button>
-      <button class="chip" onclick="showView('chat')">💬 Ask anything</button>
-      <button class="chip" onclick="showView('centres')">🔧 Check an installer</button>
-    </div>
+    <h3 style="margin-top:0">Latest CNG updates</h3>
+    <div id="home-news"><p class="small">Loading news…</p></div>
+    <p class="small" style="margin-bottom:0"><a href="#" onclick="showView('news');return false;">All CNG news →</a></p>
   </div>
 </section>
 
@@ -197,6 +223,42 @@
   </div>
 </section>
 
+<!-- ============ POSTCODE EXPLORER ============ -->
+<section id="view-postcode" class="view">
+  <h2>Postcode explorer</h2>
+  <p class="lede">Nigeria has two postcode systems — the 6-digit area codes and the new 11-character digital postcode for every building. Check a code here, then find CNG near it.</p>
+  <div class="card">
+    <label for="explorer-input" style="font-weight:700">Enter a postcode</label>
+    <div class="locbar" style="margin-top:8px">
+      <input type="text" id="explorer-input" placeholder="e.g. 300001 or FC 02 A09 DB 09" inputmode="text" autocomplete="postal-code" aria-label="Postcode">
+      <button class="btn small" id="explorer-go">Check</button>
+    </div>
+    <p id="explorer-msg" class="notice hidden"></p>
+    <div id="explorer-result"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">The two systems</h3>
+    <p style="margin:0"><b>6-digit code</b> (e.g. 300001) — covers a whole district. The app knows a small set of these so far and centres the map on the district.<br><br>
+    <b>11-character code</b> (e.g. FC 02 A09 DB 09) — identifies one building: state, LGA, district, area, building. NIPOST launched it on 1 October 2026. The app checks the code's structure here; NIPOST does not give out building coordinates, so the app asks you to set your exact spot with GPS or a map tap.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Find your building's code</h3>
+    <p style="margin:0">Tap your building on the official map — free, no account: <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. If your building has no code yet, NIPOST's Request Postcode flow reviews it within 24 hours.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Online check — sandbox</h3>
+    <p class="small" style="margin:0">The online check uses NIPOST's developer sandbox, which only recognises NIPOST's published sample codes. A real building code is checked on its structure here; full live validation of real codes needs a live NIPOST key, which is still to be arranged. Nothing here is presented as a live official validation unless the sandbox confirms it.</p>
+  </div>
+</section>
+
+<!-- ============ COVERAGE ============ -->
+<section id="view-coverage" class="view">
+  <h2>Coverage &amp; data</h2>
+  <p class="lede">What the directory actually holds — computed from the dataset, never estimated. A state with no listed stations is not the same as a state with no CNG infrastructure: it means no official list has published entries for it yet.</p>
+  <div id="coverage-body"><p class="small">Loading coverage numbers…</p></div>
+  <p class="small">Coordinates are never guessed — an entry without coordinates appears in the list with its address only. LGA data from the Pi-CNG register is unreliable, so this app does not use LGA anywhere.</p>
+</section>
+
 <!-- Route planner removed in 2.4 (18 Nov 2026): the map is not accurate
      enough overall for routing, and routing did not pick some areas. -->
 
@@ -209,11 +271,11 @@
 <!-- ============ OUTAGES ============ -->
 <section id="view-outages" class="view">
   <h2>Out of gas</h2>
-  <p class="lede">Stations drivers have reported as finished in the last 2 hours. Check here before you drive — and report a station when the gas comes back (“Back to normal”).</p>
+  <p class="lede">Stations drivers have reported as finished or closed in the last 2 hours. Check here before you drive — and report a station when the gas comes back (“Back to normal”).</p>
   <p class="result-count" id="outages-count"></p>
   <div id="outages-list"></div>
   <div class="card">
-    <p style="margin:0">A station is listed here only while a fresh “Gas finished” report is live (2 hours). After that it returns to Unconfirmed. If you are at a station on this list and gas is back, open it and tap <b>Back to normal</b>.</p>
+    <p style="margin:0">A station is listed here only while a fresh “Gas finished” or “Closed” report is live (2 hours). After that it returns to Unconfirmed. If you are at a station on this list and gas is back, open it and tap <b>Back to normal</b>.</p>
   </div>
 </section>
 
@@ -392,12 +454,17 @@
     <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
     <p style="margin:0">Open the station and tap “Report an incorrect listing” (or “Report a closure”). A moderator reviews it. Listing reports open once the database table is set up — until then the app will tell you plainly that they are not open yet.</p>
   </div>
+  <div class="card">
+    <h3 style="margin-top:0">How do I reach the team?</h3>
+    <p style="margin:0">To correct a listing, open the station and tap “Report an incorrect listing” — a moderator reviews it. For anything else, a public contact address will be published here once it is ready; until then, listing reports are the working route to the moderator. No contact details are invented or guessed.</p>
+  </div>
 </section>
 
 <!-- ============ PRIVACY ============ -->
 <section id="view-privacy" class="view">
   <h2>Privacy</h2>
   <p class="lede">Plain-language privacy notice, following the Nigeria Data Protection Act (NDPA).</p>
+  <p class="small">Last updated: 19 November 2026.</p>
   <div class="card">
     <h3 style="margin-top:0">What we collect — and what we never do</h3>
     <ul style="margin:0;padding-left:20px;font-size:15px">
@@ -471,12 +538,20 @@
 <!-- ============ MORE ============ -->
 <section id="view-more" class="view">
   <h2>More</h2>
+  <h3 class="menu-group">Discover</h3>
   <div class="card menu">
     <button class="menu-item" onclick="showView('chat')">💬 Ask anything <span>Plain answers — CNG, the app, or anything else</span></button>
+    <button class="menu-item" onclick="showView('postcode')">✉️ Postcode explorer <span>Check a 6-digit or 11-character postcode</span></button>
+    <button class="menu-item" onclick="showView('coverage')">📊 Coverage &amp; data <span>Stations by state, what is verified, what is missing</span></button>
+  </div>
+  <h3 class="menu-group">Learn &amp; save</h3>
+  <div class="card menu">
     <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English + Pidgin</span></button>
     <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
-    <button class="menu-item" onclick="showView('outages')">🔴 Out of gas <span>Stations drivers report as finished right now</span></button>
     <button class="menu-item" onclick="showView('news')">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
+  </div>
+  <h3 class="menu-group">About &amp; support</h3>
+  <div class="card menu">
     <button class="menu-item" onclick="showView('help')">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
     <button class="menu-item" onclick="showView('about')">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
     <button class="menu-item" onclick="showView('privacy')">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
@@ -550,9 +625,10 @@
 <div id="toast" class="hidden"></div>
 
 <nav class="bottomnav" aria-label="Main navigation">
-  <button data-view="map" class="on"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>Map</button>
+  <button data-view="map" class="on"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span>Home</button>
   <button data-view="stations"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v15"/><path d="M13 8h2.5a2.5 2.5 0 0 1 2.5 2.5V14a2 2 0 0 1-4 0v-1.5"/><path d="M2.5 21h11"/><path d="M7 7.5h4"/></svg></span>Stations</button>
   <button data-view="centres"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Centres</button>
+  <button data-view="outages"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span>Live</button>
   <button data-view="more"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span>More</button>
 </nav>
 

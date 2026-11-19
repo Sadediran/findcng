@@ -163,17 +163,26 @@
 
   // ---------------- tabs ----------------
   const VIEWS = ["map", "stations", "centres", "station", "outages",
-    "safety", "calculator", "news", "help", "privacy", "about", "more", "chat"];
+    "safety", "calculator", "news", "help", "privacy", "about", "more", "chat",
+    "coverage", "postcode"];
+  // Views that live under the More menu: opening one highlights More in
+  // the bottom nav (Phase 1).
+  const MORE_VIEWS = ["chat", "safety", "calculator", "news", "help",
+    "privacy", "about", "coverage", "postcode"];
   function showView(name) {
     if (!VIEWS.includes(name)) name = "map";
+    // The detail view with no station open (e.g. a hand-typed
+    // ?view=station) used to render empty — send it home instead.
+    if (name === "station" && !currentStation) name = "map";
     if (name !== "station") prevView = name;
     VIEWS.forEach((v) => {
       const el = $("view-" + v);
       if (el) el.classList.toggle("active", v === name);
     });
     document.querySelectorAll(".bottomnav button").forEach((b) => {
-      b.classList.toggle("on", b.dataset.view === name ||
-        (name === "station" && b.dataset.view === prevView));
+      const target = name === "station" ? prevView : name;
+      b.classList.toggle("on", b.dataset.view === target ||
+        (b.dataset.view === "more" && MORE_VIEWS.includes(target)));
     });
     window.scrollTo({ top: 0 });
     if (history.replaceState) {
@@ -185,6 +194,7 @@
     if (name === "map" && map) setTimeout(() => { map.invalidateSize(); renderMapMarkers(); }, 60);
     if (name === "outages") renderOutages();
     if (name === "more") renderFavs();
+    if (name === "coverage") renderCoverage();
   }
   window.showView = showView;
   document.querySelectorAll(".bottomnav button").forEach((b) => {
@@ -226,6 +236,10 @@
         renderMapMarkers();
         renderNearest();
         renderMapCount();
+        renderHomeLive();
+        renderHomeCentres();
+        renderHomeNews();
+        renderCoverage();
         handleDeepLink();
         loadLiveCentres(); // non-blocking: newly listed centres join the lists when they arrive
       })
@@ -333,17 +347,22 @@
   }
   function renderStats() {
     if (!stats) return;
+    // Defensive (Phase 1): one missing key in stats.json used to throw
+    // and kill the hero stats + both stat grids. A missing number shows
+    // "—" instead of breaking the page.
+    const num = (v) => (typeof v === "number" ? v.toLocaleString() : "—");
+    const lbl = (v) => v || "";
     const tiles =
-      statTile(stats.total_records.toLocaleString(), "Directory records", stats.total_records_label) +
-      statTile(stats.refuelling_locations.toLocaleString(), "Refuelling locations", stats.refuelling_label) +
-      statTile(stats.conversion_centres.toLocaleString(), "Conversion centres", stats.conversion_label) +
-      statTile(stats.picng_register_matched.toLocaleString(), "Officially accredited", stats.picng_register_label) +
-      statTile(stats.picng_refuel_register_matched.toLocaleString(), "On the Pi-CNG refuelling register", stats.picng_refuel_register_label) +
-      statTile(stats.needs_reverification.toLocaleString(), "Need re-verification", stats.needs_reverification_label) +
-      statTile(stats.states_with_data + " / 37", "States + FCT with data", stats.states_with_data_label) +
-      statTile(onMapCount().toLocaleString(), "With coordinates", stats.with_coordinates_label);
+      statTile(num(stats.total_records), "Directory records", lbl(stats.total_records_label)) +
+      statTile(num(stats.refuelling_locations), "Refuelling locations", lbl(stats.refuelling_label)) +
+      statTile(num(stats.conversion_centres), "Conversion centres", lbl(stats.conversion_label)) +
+      statTile(num(stats.picng_register_matched), "Officially accredited", lbl(stats.picng_register_label)) +
+      statTile(num(stats.picng_refuel_register_matched), "On the Pi-CNG refuelling register", lbl(stats.picng_refuel_register_label)) +
+      statTile(num(stats.needs_reverification), "Need re-verification", lbl(stats.needs_reverification_label)) +
+      statTile((stats.states_with_data ?? "—") + " / 37", "States + FCT with data", lbl(stats.states_with_data_label)) +
+      statTile(onMapCount().toLocaleString(), "With coordinates", lbl(stats.with_coordinates_label));
     const grid = `<div class="stat-grid">${tiles}</div>` +
-      `<p class="tiny" style="margin:8px 0 0">Directory numbers computed from the dataset on ${esc(stats.generated)}.</p>`;
+      `<p class="tiny" style="margin:8px 0 0">Directory numbers computed from the dataset on ${esc(stats.generated || "—")}.</p>`;
     const home = $("home-stats");
     if (home) home.innerHTML = grid;
     const about = $("about-stats");
@@ -351,19 +370,152 @@
     // Hero stats — same source, three headline numbers.
     const hero = $("hero-stats");
     if (hero) hero.innerHTML =
-      `<div class="hero-stat"><b>${stats.total_records.toLocaleString()}</b><span>stations &amp; centres</span></div>` +
-      `<div class="hero-stat"><b>${stats.states_with_data} / 37</b><span>states + FCT</span></div>` +
+      `<div class="hero-stat"><b>${num(stats.total_records)}</b><span>stations &amp; centres</span></div>` +
+      `<div class="hero-stat"><b>${stats.states_with_data ?? "—"} / 37</b><span>states + FCT</span></div>` +
       `<div class="hero-stat"><b>${onMapCount().toLocaleString()}</b><span>on the map</span></div>`;
     const lede = $("stations-lede");
-    if (lede) lede.textContent = `Every CNG refuelling station in the dataset — ${stats.refuelling_locations} stations. Conversion centres live under the Centres tab.`;
+    if (lede) lede.textContent = `Every CNG refuelling station in the dataset — ${stats.refuelling_locations ?? "—"} stations. Conversion centres live under the Centres tab.`;
     const nodata = $("nodata-note");
     if (nodata) {
-      nodata.textContent = stats.no_data_states.length
-        ? `${stats.no_data_states.length} states have no data yet: ${stats.no_data_states.join(", ")}. New entries come from official government and agency lists as they are published.`
+      const noData = stats.no_data_states || [];
+      nodata.textContent = noData.length
+        ? `${noData.length} states have no data yet: ${noData.join(", ")}. New entries come from official government and agency lists as they are published.`
         : "Every state now has at least one entry.";
     }
     const cs = $("centre-stats");
-    if (cs) cs.textContent = `${stats.picng_register_matched} of ${stats.conversion_centres} conversion centres are matched on the Pi-CNG accredited list; ${stats.needs_reverification} entries need re-verification.`;
+    if (cs) cs.textContent = `${num(stats.picng_register_matched)} of ${num(stats.conversion_centres)} conversion centres are matched on the Pi-CNG accredited list; ${num(stats.needs_reverification)} entries need re-verification.`;
+  }
+
+  // ---------------- homepage sections (Phase 1, §5) ----------------
+  // B. Live availability — fresh reports only. The reports Map holds only
+  // reports inside the 2-hour window (loadReports filters), and the
+  // filter below re-checks expiry, so an old report can never appear
+  // here as live. Honest empty state when nothing is fresh.
+  function renderHomeLive() {
+    const box = $("home-live");
+    if (!box) return;
+    if (!dataLoaded) { box.innerHTML = `<p class="small">Loading live reports…</p>`; return; }
+    if (!reportsLive) {
+      box.innerHTML = `<p class="small">Live reports could not be reached — check your connection and reload. The station list is still accurate.</p>`;
+      return;
+    }
+    const fresh = [...reports.entries()]
+      .filter(([id, r]) => Date.now() - r.ts <= F.REPORT_TTL_MS && findStation(id))
+      .sort((a, b) => b[1].ts - a[1].ts)
+      .slice(0, 5);
+    if (!fresh.length) {
+      box.innerHTML = `<p style="margin:0">No gas report in the last 2 hours — nothing here is presented as live until a driver reports it. At a station right now? Open it and tap <b>✅ Has gas</b> or <b>🔴 Out</b>.</p>`;
+      return;
+    }
+    box.innerHTML = fresh.map(([id, r]) => {
+      const s = findStation(id);
+      return `<div class="home-live-item" data-id="${id}"><div><b>${esc(s.name)}</b><br>` +
+        `<span class="small">${esc(locLabel(s))}${r.queue ? ` · queue about ${r.queue} min` : ""}</span></div>` +
+        `<div style="text-align:right;flex:0 0 auto">${statusBadge(id, true)}</div></div>`;
+    }).join("");
+    box.querySelectorAll(".home-live-item").forEach((el) =>
+      el.addEventListener("click", () => openStation(el.dataset.id)));
+  }
+  // C. Conversion centres preview — nearest accredited centres when the
+  // user's spot is known, otherwise the honest national counts + CTA.
+  function renderHomeCentres() {
+    const box = $("home-centres");
+    if (!box) return;
+    if (!dataLoaded) { box.innerHTML = `<p class="small">Loading centres…</p>`; return; }
+    const accredited = stats ? stats.picng_register_matched
+      : allStations().filter((s) => s.acc).length;
+    const total = stats ? stats.conversion_centres
+      : allStations().filter((s) => s.type !== "refuelling").length;
+    let inner = `<p style="margin-top:0"><b>${(accredited || 0).toLocaleString()}</b> of <b>${(total || 0).toLocaleString()}</b> conversion centres are matched on the Pi-CNG accredited list.</p>`;
+    if (userLoc) {
+      const near = allStations()
+        .filter((s) => s.type !== "refuelling" && s.acc && s.lat && s.lng)
+        .map((s) => ({ s, d: haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 3);
+      if (near.length) {
+        inner += near.map(({ s, d }) =>
+          `<div class="home-live-item" data-id="${s.id}"><div><b>${esc(s.name)}</b><br>` +
+          `<span class="small">${esc(locLabel(s))}</span></div>` +
+          `<div style="text-align:right;flex:0 0 auto"><span class="dist-chip">${fmtKm(d)}</span></div></div>`
+        ).join("");
+        inner += `<p style="margin:8px 0 0"><a href="#" onclick="showView('centres');return false;">All conversion centres →</a></p>`;
+      } else {
+        inner += `<p class="small">No accredited centre with coordinates near your spot yet — the full list is on the Centres tab. <a href="#" onclick="showView('centres');return false;">Browse centres →</a></p>`;
+      }
+    } else {
+      inner += `<p style="margin:0">Set your location above to see the nearest accredited centres. <a href="#" onclick="showView('centres');return false;">Check an installer →</a></p>`;
+    }
+    box.innerHTML = inner;
+    box.querySelectorAll(".home-live-item").forEach((el) =>
+      el.addEventListener("click", () => openStation(el.dataset.id)));
+  }
+  // F. Savings teaser — a worked example from the real prices, with its
+  // assumptions stated, never a bare number.
+  function renderHomeSavings() {
+    const box = $("home-savings");
+    if (!box) return;
+    const v = F.VEHICLES.car;
+    const kmMonth = 100 * 26;
+    const litres = kmMonth / v.kmPerLitre;
+    const scm = kmMonth / (v.kmPerLitre * F.SCM_PER_LITRE_EQUIV);
+    const saving = Math.max(0, litres * F.PRICES.petrolPerLitre - scm * F.PRICES.cngPerScmCar);
+    box.innerHTML = `<p style="margin:0">A car driving <b>100 km a day, 26 days a month</b> would save about <b>${naira(saving)} a month</b> on fuel at today's reported prices (petrol ₦${F.PRICES.petrolPerLitre}/litre, CNG ₦${F.PRICES.cngPerScmCar}/SCM, ${F.PRICES.priceDate}). That is an estimate — your car and your mileage change it.</p>`;
+  }
+  // H. Latest updates — the 3 newest news items. The news module owns
+  // the feed; it dispatches a "findcng:news" event whenever it renders,
+  // and exposes its seed as the offline fallback.
+  function renderHomeNews() {
+    const box = $("home-news");
+    if (!box) return;
+    const N = window.FindCNGNews;
+    if (!N) return; // news module not loaded yet — its event will call us
+    const items = (N.getItems && N.getItems().length ? N.getItems()
+      : (N.getSeed ? N.getSeed() : [])).slice(0, 3);
+    if (!items.length) {
+      box.innerHTML = `<p class="small" style="margin:0">No news yet — check back soon.</p>`;
+      return;
+    }
+    box.innerHTML = items.map((it) =>
+      `<div class="home-live-item" data-news="1"><div><b>${esc(it.title || "Untitled")}</b><br>` +
+      `<span class="small">${it.published_at ? esc(fmtDate(it.published_at)) + " · " : ""}${esc(it.source_name || "")}</span></div></div>`
+    ).join("");
+    box.querySelectorAll("[data-news]").forEach((el) =>
+      el.addEventListener("click", () => showView("news")));
+  }
+  // Coverage view — per-state table + no-data states + precision, all
+  // from stats.json (computed at build time). Nothing estimated.
+  function renderCoverage() {
+    const box = $("coverage-body");
+    if (!box) return;
+    if (!stats) { box.innerHTML = `<p class="small">Loading coverage numbers…</p>`; return; }
+    const perState = stats.per_state || [];
+    const rows = perState.map((r) =>
+      `<tr><td>${esc(r.state)}</td><td>${(r.count || 0).toLocaleString()}</td></tr>`).join("");
+    const noData = stats.no_data_states || [];
+    const prec = stats.coord_precision || {};
+    const noCoords = (stats.total_records || 0) - (stats.with_coordinates || 0);
+    box.innerHTML =
+      `<div class="card"><h3 style="margin-top:0">Directory at a glance</h3>` +
+      `<p style="margin:0"><b>${(stats.total_records || 0).toLocaleString()}</b> records · ` +
+      `<b>${(stats.refuelling_locations || 0).toLocaleString()}</b> refuelling locations · ` +
+      `<b>${(stats.conversion_centres || 0).toLocaleString()}</b> conversion centres.</p>` +
+      `<p style="margin:8px 0 0"><b>${(stats.picng_register_matched || 0).toLocaleString()}</b> conversion centres officially accredited · ` +
+      `<b>${(stats.picng_refuel_register_matched || 0).toLocaleString()}</b> refuelling locations on the Pi-CNG refuelling register · ` +
+      `<b>${(stats.needs_reverification || 0).toLocaleString()}</b> entries need re-verification · ` +
+      `<b>${(stats.single_source || 0).toLocaleString()}</b> from a single source.</p>` +
+      `<p class="small" style="margin:8px 0 0">Numbers computed from the dataset on ${esc(stats.generated || "—")}.</p></div>` +
+      `<div class="card"><h3 style="margin-top:0">Map pins — how precise?</h3>` +
+      `<p style="margin:0"><b>${(prec.exact || 0).toLocaleString()}</b> exact locations · ` +
+      `<b>${(prec.approximate || 0).toLocaleString()}</b> approximate · ` +
+      `<b>${(prec.town || 0).toLocaleString()}</b> area pins (town centre, not the exact spot) · ` +
+      `<b>${noCoords.toLocaleString()}</b> entries have no coordinates yet and appear in the list only.</p></div>` +
+      `<div class="card" style="overflow-x:auto"><h3 style="margin-top:0">Entries by state</h3>` +
+      `<table class="coverage-table"><tr><th>State</th><th>Entries</th></tr>${rows}</table></div>` +
+      (noData.length
+        ? `<div class="card"><h3 style="margin-top:0">States with no data yet</h3>` +
+          `<p style="margin:0"><b>${noData.length}</b> states have no entries yet: ${noData.map(esc).join(", ")}. That means no official list has published entries for them — not that they have no CNG infrastructure. New entries come from official government and agency lists as they are published.</p></div>`
+        : `<div class="card"><p style="margin:0">Every state now has at least one entry.</p></div>`);
   }
 
   // ---------------- reports (live only — no demo mode) ----------------
@@ -395,6 +547,8 @@
     renderCentres();
     renderNearest();
     renderOutages();
+    renderHomeLive();
+    renderHomeCentres();
     if (currentStation && $("view-station").classList.contains("active")) renderDetail(currentStation);
   }
 
@@ -642,6 +796,7 @@
     $("loc-status").textContent = "Your spot: " + label + " (" + lat.toFixed(4) + ", " + lng.toFixed(4) + ")";
     renderNearest();
     renderStations();
+    renderHomeCentres();
     loadLiveCentres(); // a near-me search refreshes the live register, so newly listed centres are captured at search time (2.6)
   }
   function etaRing(mins) {
@@ -741,6 +896,64 @@
       },
       { enableHighAccuracy: true, timeout: 12000 }
     );
+  }
+
+  // ---------------- postcode explorer (Phase 1) ----------------
+  // Reuses the postcode module: 6-digit codes resolve through the local
+  // table (and offer "see stations near here"); 11-character codes are
+  // parsed into segments and checked against the NIPOST sandbox with an
+  // honest note about what the sandbox can and cannot confirm. This is
+  // NOT the Phase 2 NIPOST integration — no new API use, no live
+  // validation claim.
+  function explorerGo() {
+    const raw = $("explorer-input").value;
+    const p = F.postcode.parse(raw);
+    const msg = $("explorer-msg");
+    const out = $("explorer-result");
+    msg.classList.add("hidden");
+    out.innerHTML = "";
+    if (!p.valid) {
+      msg.textContent = p.reason === "empty"
+        ? "Enter a postcode first — a 6-digit code (e.g. 300001) or an 11-character code (e.g. FC 02 A09 DB 09)."
+        : p.reason;
+      msg.className = "notice err"; msg.classList.remove("hidden");
+      return;
+    }
+    if (p.kind === "ndaps") {
+      const s = p.segments;
+      out.innerHTML =
+        `<div class="seg-chips"><span><b>State</b><br>${esc(s.state)}${p.stateConfirmed ? " ✓" : ""}</span>` +
+        `<span><b>LGA</b><br>${esc(s.lga)}</span><span><b>District</b><br>${esc(s.district)}</span>` +
+        `<span><b>Area</b><br>${esc(s.area)}</span><span><b>Building</b><br>${esc(s.building)}</span></div>` +
+        `<p class="small">${p.stateConfirmed ? "The state code is on NIPOST's confirmed list." : "The state code is not on NIPOST's confirmed list yet — NIPOST has only published 12 state codes so far, so this is not a rejection."} A building code identifies one building, but NIPOST does not give out building coordinates — set your exact spot with GPS or a map tap.</p>` +
+        `<p class="small" id="explorer-api">Checking the NIPOST sandbox…</p>`;
+      F.postcode.lookupApi(p.code).then((res) => {
+        const el = $("explorer-api");
+        if (!el) return;
+        if (res && res.valid) {
+          el.textContent = "✓ NIPOST's sandbox confirms this postcode is assigned" +
+            (res.lga ? " — LGA: " + res.lga : "") + ".";
+        } else if (res) {
+          el.textContent = "The sandbox did not confirm this code — it only recognises NIPOST's published sample codes, so a real building code is not expected to resolve there. The structure above is valid; full live validation needs a live NIPOST key.";
+        } else {
+          el.textContent = "The online check is unavailable right now — the structure above is still valid; try again later.";
+        }
+      });
+      return;
+    }
+    F.postcode.resolveSix(p.code).then((hit) => {
+      if (!hit) {
+        msg.textContent = "We don't have that postcode area yet — the app only knows a small set of 6-digit codes so far. Use your location or tap the map instead.";
+        msg.className = "notice"; msg.classList.remove("hidden");
+        return;
+      }
+      out.innerHTML = `<p><b>📍 ${esc(hit.place)}</b><br><span class="small">Approximate ${hit.level === "exact" ? "district" : "dispatch district"} centre — a 6-digit code covers a whole area, not one building.</span></p>` +
+        `<button class="btn" id="explorer-nearby">See stations near here</button>`;
+      $("explorer-nearby").addEventListener("click", () => {
+        setUserLoc(hit.lat, hit.lng, hit.place + " — postcode " + p.code);
+        showView("map");
+      });
+    });
   }
 
   // ---------------- station list ----------------
@@ -886,13 +1099,15 @@
   function renderOutages() {
     const box = $("outages-list");
     if (!box || !dataLoaded) return;
-    const list = stations.filter((s) => statusOf(s.id) === "finished")
+    // Finished OR closed (Phase 1): the map filter already treated closed
+    // stations as outages, but this view only listed "finished".
+    const list = stations.filter((s) => statusOf(s.id) === "finished" || statusOf(s.id) === "closed")
       .sort((a, b) => (reports.get(b.id)?.ts || 0) - (reports.get(a.id)?.ts || 0));
     $("outages-count").textContent = reportsLive
-      ? (list.length ? list.length + " station(s) reported out of gas in the last 2 hours" : "No station is currently reported out of gas. Good news — or no fresh reports yet.")
+      ? (list.length ? list.length + " station(s) reported out of gas or closed in the last 2 hours" : "No station is currently reported out of gas. Good news — or no fresh reports yet.")
       : "Live reports could not be reached — showing the last known state. Check your connection.";
     if (!list.length) {
-      box.innerHTML = `<div class="empty"><div class="big">✅</div><p><b>Nothing out of gas right now.</b></p><p>No station has a fresh “Gas finished” report. If you find one empty, report it so other drivers don't waste the trip.</p></div>`;
+      box.innerHTML = `<div class="empty"><div class="big">✅</div><p><b>Nothing out of gas right now.</b></p><p>No station has a fresh “Gas finished” or “Closed” report. If you find one empty, report it so other drivers don't waste the trip.</p></div>`;
       return;
     }
     box.innerHTML = list.map(stationCard).join("");
@@ -1359,6 +1574,7 @@
       `<div class="card">` +
       `<div class="calc-row"><span>Petrol cost / month</span><b>${naira(petrolCost)}</b></div>` +
       `<div class="calc-row"><span>CNG cost / month</span><b>${naira(cngCost)}</b></div>` +
+      `<div class="calc-row"><span>Daily saving</span><b>${naira(saving / days)}</b></div>` +
       `<div class="calc-row"><span>Annual saving</span><b>${naira(annual)}</b></div>` +
       `<div class="calc-row"><span>Distance / month</span><b>${kmMonth.toLocaleString()} km</b></div>` +
       `<div class="calc-row"><span>Petrol needed</span><b>${litres.toFixed(0)} litres</b></div>` +
@@ -1366,7 +1582,18 @@
       `<div class="calc-row payback"><span>Conversion pays for itself in</span><b>${payback}</b></div>` +
       `</div><p class="small">${cost > 0 ? "Payback uses the conversion cost you entered (" + naira(cost) + "). " : esc(v.convLabel) + " "}Drivers report saving 50–75% on fuel in real life. ` +
       `This is fuel cost only — it does not count time spent queuing or extra plug/coil maintenance. ` +
-      `1 SCM of CNG ≈ the energy of ~1.1 litres of petrol (estimate).</p>`;
+      `1 SCM of CNG ≈ the energy of ~1.1 litres of petrol (estimate).</p>` +
+      `<button class="btn outline" id="calc-copy" style="margin-top:4px">📋 Copy my summary</button>`;
+    const copyBtn = $("calc-copy");
+    if (copyBtn) copyBtn.addEventListener("click", () => {
+      const text = `My CNG savings estimate (FindCNG Nigeria)\n` +
+        `Petrol: ${naira(petrolCost)}/month · CNG: ${naira(cngCost)}/month\n` +
+        `Saving: ${naira(saving)}/month (${naira(saving / days)}/day, ${naira(annual)}/year, ${pct}% cheaper)\n` +
+        `Payback: ${payback} · ${kmMonth.toLocaleString()} km/month · Prices: petrol ₦${petrol}/L, CNG ₦${cng}/SCM (${F.PRICES.priceDate}) — an estimate, not a guarantee.`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast("Summary copied — paste it anywhere.")).catch(() => toast(text));
+      } else { toast(text); }
+    });
     saveVehicleProfile();
   }
   function saveVehicleProfile() {
@@ -1446,6 +1673,24 @@
     $("postcode-go").addEventListener("click", postcodeGo);
     $("postcode-input").addEventListener("keydown", (e) => { if (e.key === "Enter") postcodeGo(); });
     $("gps-go").addEventListener("click", gpsGo);
+    // Hero primary actions (Phase 1, §5) — every one does something real.
+    $("hero-nearby").addEventListener("click", () => {
+      gpsGo();
+      const nl = $("nearest-list");
+      if (nl) nl.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    $("hero-centres").addEventListener("click", () => showView("centres"));
+    $("hero-postcode").addEventListener("click", () => {
+      const pi = $("postcode-input");
+      pi.scrollIntoView({ behavior: "smooth", block: "center" });
+      pi.focus();
+    });
+    // Postcode explorer (Phase 1).
+    $("explorer-go").addEventListener("click", explorerGo);
+    $("explorer-input").addEventListener("keydown", (e) => { if (e.key === "Enter") explorerGo(); });
+    // Latest-updates section refreshes whenever the news module renders.
+    document.addEventListener("findcng:news", renderHomeNews);
+    renderHomeSavings();
     document.querySelectorAll("[data-map-layer]").forEach((b) =>
       b.addEventListener("click", () => setMapLayer(b.dataset.mapLayer)));
     $("map-search-go").addEventListener("click", () => {
@@ -1504,6 +1749,14 @@
     $("listing-backdrop").addEventListener("click", (e) => { if (e.target === $("listing-backdrop")) $("listing-backdrop").classList.remove("open"); });
     $("report-close").addEventListener("click", () => $("report-backdrop").classList.remove("open"));
     $("listing-close").addEventListener("click", () => $("listing-backdrop").classList.remove("open"));
+    // Escape closes either sheet (Phase 1 — keyboard users had no way out
+    // except the × button or tapping the backdrop).
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        $("report-backdrop").classList.remove("open");
+        $("listing-backdrop").classList.remove("open");
+      }
+    });
     $("station-back").addEventListener("click", () => showView(prevView || "map"));
     // Defaults
     $("calc-petrol").value = F.PRICES.petrolPerLitre;
