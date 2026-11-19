@@ -859,7 +859,8 @@
         (p.stateConfirmed ? "" : " (its state code is not on the confirmed list yet — NIPOST has only published 12 state codes so far)") +
         ". Postcodes cannot give an exact map point, so use your location or tap the map to set your spot — your postcode is saved as your label.";
       msg.className = "notice ok"; msg.classList.remove("hidden");
-      F.postcode.lookupApi(p.code).then((res) => {
+      F.postcode.lookupApi(p.code).then((env) => {
+        const res = env && env.result;
         if (res && res.valid) {
           msg.textContent = "✓ NIPOST confirms this postcode is assigned" +
             (res.lga ? " — LGA: " + res.lga : "") +
@@ -927,14 +928,17 @@
         `<span><b>Area</b><br>${esc(s.area)}</span><span><b>Building</b><br>${esc(s.building)}</span></div>` +
         `<p class="small">${p.stateConfirmed ? "The state code is on NIPOST's confirmed list." : "The state code is not on NIPOST's confirmed list yet — NIPOST has only published 12 state codes so far, so this is not a rejection."} A building code identifies one building, but NIPOST does not give out building coordinates — set your exact spot with GPS or a map tap.</p>` +
         `<p class="small" id="explorer-api">Checking the NIPOST sandbox…</p>`;
-      F.postcode.lookupApi(p.code).then((res) => {
+      F.postcode.lookupApi(p.code).then((env) => {
         const el = $("explorer-api");
         if (!el) return;
+        const res = env && env.result;
         if (res && res.valid) {
           el.textContent = "✓ NIPOST's sandbox confirms this postcode is assigned" +
             (res.lga ? " — LGA: " + res.lga : "") + ".";
         } else if (res) {
           el.textContent = "The sandbox did not confirm this code — it only recognises NIPOST's published sample codes, so a real building code is not expected to resolve there. The structure above is valid; full live validation needs a live NIPOST key.";
+        } else if (env && env.error) {
+          el.textContent = F.postcode.errorMessage(env.error);
         } else {
           el.textContent = "The online check is unavailable right now — the structure above is still valid; try again later.";
         }
