@@ -2311,9 +2311,14 @@
     const res = $("op-station-results");
     if (!res) return;
     if (q.length < 2) { res.innerHTML = ""; return; }
+    // Multi-word search: every word must appear somewhere in the
+    // station's name, city, state or address ("NIPCO Benin" matches a
+    // NIPCO station in Benin City even though no single field contains
+    // the whole phrase).
+    const words = q.split(/\s+/).filter(Boolean);
+    const hay = (s) => `${s.name || ""} ${s.city || ""} ${s.state || ""} ${s.address || ""}`.toLowerCase();
     const hits = allStations()
-      .filter((s) => !s.live && ((s.name || "").toLowerCase().includes(q) ||
-        (s.city || "").toLowerCase().includes(q) || (s.state || "").toLowerCase().includes(q)))
+      .filter((s) => !s.live && words.every((w) => hay(s).includes(w)))
       .slice(0, 8);
     if (!hits.length) {
       res.innerHTML = `<p class="small">No listing matches that name. If the station is not in the directory yet, use “Register a centre” instead.</p>`;
