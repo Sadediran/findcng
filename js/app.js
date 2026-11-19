@@ -980,10 +980,18 @@
     // WhatsApp share (19 Nov 2026): a snapshot message — name, address,
     // live status with its age when a fresh report exists, and the deep
     // link. wa.me/?text= opens the share picker, no number needed.
-    const loc = locLabel(s);
-    const addrLine = s.address
-      ? (loc && !s.address.includes(loc) ? s.address + ", " + loc : s.address)
-      : (loc || "");
+    // Address line: append only the trailing city/state parts the
+    // address doesn't already end with. A whole-string includes() check
+    // fails when city == state ("Lagos, Lagos" is not contained in an
+    // address ending "...Ikeja, Lagos") and produced "Lagos, Lagos,
+    // Lagos" — caught by the live check on CNG-019, 19 Nov 2026.
+    const locParts = locLabel(s) ? locLabel(s).split(", ").filter(Boolean) : [];
+    let addrLine = s.address || "";
+    for (const part of locParts) {
+      if (!addrLine.toLowerCase().endsWith(part.toLowerCase())) {
+        addrLine = addrLine ? addrLine + ", " + part : part;
+      }
+    }
     const shareStatus = (r && st !== "unconfirmed")
       ? `\n${F.STATUS[st].label} (reported ${timeAgo(r.ts)})` : "";
     const shareHref = "https://wa.me/?text=" + encodeURIComponent(
