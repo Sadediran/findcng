@@ -43,9 +43,10 @@ confirmations + listing reports. Running cost ~₦0/month on free tiers.
   **Coverage & data** (per-state table, no-data states, pin precision —
   all from `stats.json`).
 - **API hardening:** POST reports/confirmations/listing-reports reject
-  unknown station IDs; 10-minute same-reporter same-status dedupe;
-  admin passcode fails closed when unset (no default); error messages no
-  longer leak database internals; security headers in `vercel.json`.
+  unknown station IDs; 2-minute same-station same-status dedupe (a
+  changed status always files fresh); admin passcode fails closed when
+  unset (no default); error messages no longer leak database internals;
+  security headers in `vercel.json`.
 - **Data cleaning:** `build-data.py` normalises operator casing (most
   readable variant), whitespace, trailing address punctuation and repeated
   operator prefixes in names (20 names, 67 addresses, 20 operators).

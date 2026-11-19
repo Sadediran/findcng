@@ -210,6 +210,73 @@ gone = not any(x.get("station_id") == "CNG-001" and x.get("status") == "availabl
                for x in r.get("reports", []))
 check("test report gone after cleanup", gone)
 
+# --- Phase 1 checks (19 Nov 2026) -------------------------------------------
+# 9. Station-id validation: fake ids are rejected (400), not stored.
+s, r = call("POST", BASE + "/api/reports", {"station_id": "CNG-999", "status": "available"})
+check("POST /api/reports rejects unknown station_id", s == 400 and r.get("error") == "unknown station_id", f"HTTP {s}")
+s, r = call("POST", BASE + "/api/listing-reports",
+            {"station_id": "CNG-999", "report_type": "other", "details": "phase1 check"})
+check("POST /api/listing-reports rejects unknown station_id", s == 400 and r.get("error") == "unknown station_id", f"HTTP {s}")
+
+# 10. Dedupe: the same station + status filed twice within 2 minutes
+# returns the first report (duplicate: true), not a second row. A
+# changed status always files fresh (checked by the second post below
+# using a different status — it must NOT be a duplicate).
+s1, r1 = call("POST", BASE + "/api/reports", {"station_id": "CNG-002", "status": "low", "queue_minutes": 7})
+dup_id = (r1.get("report") or {}).get("id")
+s2, r2 = call("POST", BASE + "/api/reports", {"station_id": "CNG-002", "status": "low", "queue_minutes": 7})
+check("duplicate report returns duplicate:true, same id",
+      s1 == 200 and r1.get("ok") is True and s2 == 200 and r2.get("duplicate") is True
+      and (r2.get("report") or {}).get("id") == dup_id,
+      f"HTTP {s1}/{s2} id={dup_id}")
+s3, r3 = call("POST", BASE + "/api/reports", {"station_id": "CNG-002", "status": "available"})
+chg_id = (r3.get("report") or {}).get("id")
+check("changed status files fresh (not a duplicate)",
+      s3 == 200 and r3.get("ok") is True and r3.get("duplicate") is not True and chg_id and chg_id != dup_id,
+      f"HTTP {s3} id={chg_id}")
+for rid in (dup_id, chg_id):
+    if rid:
+        s, _ = call("DELETE", f"{SB}/rest/v1/availability_reports?id=eq.{rid}", headers=hdrs)
+        check(f"cleanup: dedupe test report {rid[:8]} deleted", s in (200, 204), f"HTTP {s}")
+
+# 11. Admin passcode still works after the fail-closed change (read-only list).
+s, r = call("POST", BASE + "/api/admin", {"action": "list_listing_reports", "status": "open"},
+            headers={"X-Admin-Passcode": ADMIN})
+check("POST /api/admin with real passcode lists reports",
+      s == 200 and r.get("ok") is True and isinstance(r.get("reports"), list),
+      f"HTTP {s} reports={len(r.get('reports', [])) if isinstance(r.get('reports'), list) else '?'}")
+
+# 12. Security headers + Phase 1 shell (hero, service-worker cache version).
+# Headers via curl -I (urllib truncates chunked reads through the egress
+# proxy — IncompleteRead — so the body check uses fetch_text's curl fallback).
+try:
+    p = subprocess.run(["curl", "-s", "-I", "--max-time", "30", BASE + "/"],
+                       capture_output=True, text=True, timeout=40)
+    hdrs_lower = p.stdout.lower()
+    check("security headers present",
+          "x-content-type-options: nosniff" in hdrs_lower
+          and "referrer-policy: strict-origin-when-cross-origin" in hdrs_lower
+          and "x-frame-options: sameorigin" in hdrs_lower,
+          "curl -I " + BASE)
+except Exception as e:
+    check("security headers present", False, str(e)[:120])
+try:
+    s, body = fetch_text(BASE + "/")
+    check("homepage carries the Phase 1 hero", s == 200 and "Find CNG. Find Confidence." in body)
+except Exception as e:
+    check("homepage carries the Phase 1 hero", False, str(e)[:120])
+try:
+    s, sw = fetch_text(BASE + "/sw.js")
+    check("sw.js cache is findcng-v3.0.0", s == 200 and "findcng-v3.0.0" in sw)
+except Exception as e:
+    check("sw.js cache is findcng-v3.0.0", False, str(e)[:120])
+try:
+    s, sm = fetch_text(BASE + "/sitemap.xml")
+    check("sitemap lists the new views",
+          s == 200 and "?view=coverage" in sm and "?view=postcode" in sm, f"urls={sm.count('<url>')}")
+except Exception as e:
+    check("sitemap lists the new views", False, str(e)[:120])
+
 print()
 print("RESULT:", "ALL PASS — live APIs verified end to end" if not fails else f"{len(fails)} FAILURES: {fails}")
 sys.exit(1 if fails else 0)

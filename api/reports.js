@@ -12,10 +12,18 @@
 import { json, sb, supabaseConfigured, reporterHash, rateLimit, isKnownStation } from "./_lib.js";
 
 const STATUSES = new Set(["available", "low", "finished", "closed"]);
-// Same reporter + same station + same status within this window is a
-// duplicate (double-tap, retry storm) — return the existing report
-// instead of inserting another row. A changed status always files fresh.
-const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+// Same station + same status within this window is a duplicate
+// (double-tap, retry storm) — return the latest report instead of
+// inserting another row. A changed status always files fresh, so a
+// "Back to normal" after a "finished" is never suppressed.
+// NOTE (19 Nov 2026): the window is deliberately reporter-agnostic.
+// The first version keyed on reporter_hash (IP + UA + day), but the
+// hash is unstable in practice — the VM's egress proxy rotates its
+// outbound IP per request, and mobile networks renumber too — so the
+// hash version never matched a second tap. Same station + same status
+// within 2 minutes carries no new information anyway: the visible
+// state is identical, and the reporter can re-file after the window.
+const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 
 export default async function handler(req, res) {
   if (!supabaseConfigured) {
@@ -65,13 +73,14 @@ export default async function handler(req, res) {
       if (Number.isNaN(queue)) queue = null;
       const tri = (v) => (v === true ? true : v === false ? false : null);
       const hash = reporterHash(req);
-      // Duplicate guard: same reporter, same station, same status, within
-      // the window — the first report stands, no second row is written.
+      // Duplicate guard: the latest report for this station is the same
+      // status and less than 2 minutes old — the first report stands,
+      // no second row is written.
       try {
         const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();
         const recent = await sb(
           `availability_reports?select=id,status,reported_at&station_id=eq.${encodeURIComponent(stationId)}` +
-          `&reporter_hash=eq.${encodeURIComponent(hash)}&reported_at=gte.${encodeURIComponent(since)}` +
+          `&reported_at=gte.${encodeURIComponent(since)}` +
           `&order=reported_at.desc&limit=1`
         );
         if (recent && recent.length && recent[0].status === status) {
