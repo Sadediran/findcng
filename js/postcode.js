@@ -153,6 +153,25 @@ FINDCNG.postcode = (function () {
     return callApi({ action: "states" });
   }
 
+  // LGA codes/names in a state (free reference endpoint). Used to NAME
+  // the LGA segment of a code the user typed.
+  function lgasApi(state) {
+    return callApi({ action: "lgas", state });
+  }
+
+  // District codes under a state+LGA (free reference endpoint; code
+  // only — districts have no human names). Used to confirm the district
+  // segment of a typed code is listed by NIPOST.
+  function districtsApi(state, lga) {
+    return callApi({ action: "districts", state, lga });
+  }
+
+  // Area codes under a state+LGA+district (free reference endpoint;
+  // code only). Used to confirm the area segment of a typed code.
+  function areasApi(state, lga, district) {
+    return callApi({ action: "areas", state, lga, district });
+  }
+
   // Plain-language explanation of a proxy error code, for the UI.
   // Every message says what happened and what the user can do — none of
   // them claims the code itself is invalid.
@@ -173,6 +192,7 @@ FINDCNG.postcode = (function () {
   return {
     parse, resolveSix, loadTable, STATE_NAMES,
     statusApi, lookupApi, searchApi, nearbyApi, reverseApi, statesApi,
+    lgasApi, districtsApi, areasApi,
     errorMessage,
   };
 })();

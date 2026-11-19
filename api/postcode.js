@@ -1,33 +1,57 @@
 // POST /api/postcode — server-side proxy to the official NIPOST Postcode API.
-// Keeps the API key off the browser. Free tier only on a LIVE key (L1
-// validity); a TEST key may also read L2 (administrative address) because
-// the sandbox is unmetered at every level — the server enforces that cap,
-// so swapping in a live key can never spend credits by accident.
+// Keeps the API key off the browser.
 //
 // Body: { action: "status" }                -> { configured, mode } (no NIPOST call)
-//       { action: "lookup", code, level? }  -> L1 validity (+ L2 address on sandbox keys)
+//       { action: "lookup", code, level? }  -> validity (+ address on sandbox keys)
 //       { action: "search", q }             -> autocomplete suggestions
 //       { action: "nearby", lat, lng }      -> postcodes near a point
 //       { action: "reverse", lat, lng }     -> postcode at a point
 //       { action: "states" }                -> the 37 state codes/names
+//       { action: "lgas", state }           -> LGA codes/names in a state
+//       { action: "districts", state, lga } -> district codes in a state+LGA
+//       { action: "areas", state, lga, district } -> area codes below a district
 //
 // Every response carries `mode`: "sandbox" (nipost_test_), "live"
 // (nipost_live_) or "unknown" — the key itself is never exposed. The UI
 // labels sandbox results as sandbox results; nothing here claims a live
 // validation unless the key is a live one.
 //
+// LEVELS — READ CAREFULLY (19 Nov 2026): the gateway still implements the
+// level parameter (verified live: level=1 answers, level=2 on our key
+// returns 403 level_not_granted), but the official docs updated 19 Nov
+// 2026 no longer document any L1–L5 system — they say "Lookup and
+// Autocomplete consume credits" with no free tier stated for live keys,
+// and "Test calls never consume credits" for test keys. So: on a LIVE key
+// this proxy requests level 1 only (the cheapest possible lookup), but
+// even L1 may consume credits under the current docs — the cost is
+// UNCONFIRMED and NIPOST has published no credit pricing. On a TEST key
+// the proxy allows level 2 (administrative address — the autofill demo)
+// because test calls are unmetered; our current test key is in fact
+// granted L1 only, so L2 answers not_granted and the client falls back
+// to L1. L5 (coordinates) is never requested: publishable keys are
+// capped below it, it needs special approval, and this app gets
+// coordinates from GPS / a map tap instead.
+//
 // Without NIPOST_API_KEY the route answers { configured: false } and the
 // app falls back to its local 6-digit table + GPS + map tap.
 // NIPOST_API_BASE may point at the unofficial mock (https://ng-postcode.oliha.dev)
 // for testing — default is the official https://api.postcode.gov.ng.
-// Paths verified against the API's public OpenAPI spec (Nov 2026) and
-// re-probed live 19 Nov 2026 (docs.postcode.gov.ng, updated 19 Nov 2026).
+// Paths verified against the official docs (docs.postcode.gov.ng,
+// updated 19 Nov 2026) and re-probed live the same day. NOTE: /v1/search
+// /nearby and /reverse have NO docs pages (verified live only); the
+// reference endpoints below are documented and free (no credits).
 //
 // Sandbox reality (verified live 19 Nov 2026): the sandbox dataset holds
 // only NIPOST's published sandbox codes (e.g. FC-01-A01-KP-27 -> valid).
 // The docs' format example FC 02 A09 DB 09 is NOT in the sandbox dataset
 // and correctly returns valid:false — that is NIPOST's data, not a bug in
 // this proxy. Real building codes only resolve under a live key.
+//
+// Terms compliance (postcode.gov.ng/terms, /acceptable-use, read 19 Nov
+// 2026): this proxy looks up only codes the user typed, stores no NDAPS
+// data anywhere (results are transient in the page; nothing is cached or
+// written to any database), never claims a postcode verifies identity or
+// ownership, and uses no NIPOST branding.
 import { json, rateLimit } from "./_lib.js";
 
 const BASE = (process.env.NIPOST_API_BASE || "https://api.postcode.gov.ng").replace(/\/$/, "");
@@ -35,12 +59,13 @@ const KEY = (process.env.NIPOST_API_KEY || "").trim();
 const MODE = KEY.startsWith("nipost_live_") ? "live"
   : KEY.startsWith("nipost_test_") ? "sandbox" : "unknown";
 
-// Max lookup level this key may request. Live keys stay at L1 (free,
-// validity only) so the app can never spend NIPOST credits without a
-// separate decision; sandbox keys are unmetered at every level, so L2
-// (administrative address — the autofill demo) is allowed there. L5
-// (coordinates) is never requested: it needs special regulatory approval
-// and this app gets coordinates from GPS / a map tap instead.
+// Max lookup level this key may request. Live keys stay at L1 (the
+// cheapest lookup the gateway offers — though the current docs state
+// Lookup consumes credits, so even L1's cost on a live key is
+// unconfirmed); sandbox keys are unmetered, so L2 (administrative
+// address — the autofill demo) is allowed there. L5 (coordinates) is
+// never requested. The gateway, not this proxy, has the final say: our
+// current test key is granted L1 only and answers L2 with not_granted.
 const MAX_LEVEL = MODE === "sandbox" ? 2 : 1;
 
 async function nipost(path) {
@@ -139,6 +164,26 @@ export default async function handler(req, res) {
         : `/v1/search/reverse?lat=${lat}&lng=${lng}`);
     } else if (action === "states") {
       result = await nipost("/v1/reference/states");
+    } else if (action === "lgas" || action === "districts" || action === "areas") {
+      // Free reference endpoints (docs: "free, no credits consumed").
+      // Used to NAME the LGA segment of a code the user typed, and to
+      // confirm the district/area codes exist under that state+LGA.
+      // Districts and areas have no human names — code only.
+      const state = String(body.state || "").trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(state)) return json(res, 400, { ok: false, error: "state is required (2 letters)" });
+      if (action === "lgas") {
+        result = await nipost(`/v1/reference/lgas?state=${state}`);
+      } else {
+        const lga = String(body.lga || "").trim();
+        if (!/^\d{2}$/.test(lga)) return json(res, 400, { ok: false, error: "lga is required (2 digits)" });
+        if (action === "districts") {
+          result = await nipost(`/v1/reference/districts?state=${state}&lga=${lga}`);
+        } else {
+          const district = String(body.district || "").trim().toUpperCase();
+          if (!/^[A-Z0-9]{3}$/.test(district)) return json(res, 400, { ok: false, error: "district is required (3 characters)" });
+          result = await nipost(`/v1/reference/areas?state=${state}&lga=${lga}&district=${district}`);
+        }
+      }
     } else {
       return json(res, 400, { ok: false, error: "unknown action" });
     }
