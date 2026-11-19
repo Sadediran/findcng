@@ -34,6 +34,8 @@
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
  "with_phone": 18,
+ "with_postcode": 7,
+ "with_postcode_label": "Entries carrying a postcode in the dataset (6-digit area codes from the registers).",
  "operators": [
   {
    "name": "Mide Premium Oil & Gas Ltd",
@@ -205,6 +207,278 @@
   {
    "state": "Sokoto",
    "count": 1
+  }
+ ],
+ "per_state_detail": [
+  {
+   "state": "Abia",
+   "total": 1,
+   "refuelling": 0,
+   "conversion": 1,
+   "accredited": 1,
+   "with_coords": 1,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Adamawa",
+   "total": 16,
+   "refuelling": 1,
+   "conversion": 15,
+   "accredited": 15,
+   "with_coords": 11,
+   "pct_mapped": 69
+  },
+  {
+   "state": "Akwa Ibom",
+   "total": 8,
+   "refuelling": 2,
+   "conversion": 7,
+   "accredited": 5,
+   "with_coords": 7,
+   "pct_mapped": 88
+  },
+  {
+   "state": "Anambra",
+   "total": 1,
+   "refuelling": 0,
+   "conversion": 1,
+   "accredited": 1,
+   "with_coords": 1,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Bayelsa",
+   "total": 1,
+   "refuelling": 0,
+   "conversion": 1,
+   "accredited": 1,
+   "with_coords": 1,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Borno",
+   "total": 2,
+   "refuelling": 2,
+   "conversion": 0,
+   "accredited": 0,
+   "with_coords": 2,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Cross River",
+   "total": 2,
+   "refuelling": 1,
+   "conversion": 1,
+   "accredited": 1,
+   "with_coords": 2,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Delta",
+   "total": 22,
+   "refuelling": 5,
+   "conversion": 18,
+   "accredited": 17,
+   "with_coords": 19,
+   "pct_mapped": 86
+  },
+  {
+   "state": "Ebonyi",
+   "total": 1,
+   "refuelling": 0,
+   "conversion": 1,
+   "accredited": 1,
+   "with_coords": 1,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Edo",
+   "total": 20,
+   "refuelling": 9,
+   "conversion": 18,
+   "accredited": 13,
+   "with_coords": 15,
+   "pct_mapped": 75
+  },
+  {
+   "state": "Ekiti",
+   "total": 10,
+   "refuelling": 2,
+   "conversion": 8,
+   "accredited": 8,
+   "with_coords": 9,
+   "pct_mapped": 90
+  },
+  {
+   "state": "Enugu",
+   "total": 22,
+   "refuelling": 3,
+   "conversion": 19,
+   "accredited": 19,
+   "with_coords": 11,
+   "pct_mapped": 50
+  },
+  {
+   "state": "Federal Capital Territory",
+   "total": 152,
+   "refuelling": 26,
+   "conversion": 133,
+   "accredited": 122,
+   "with_coords": 103,
+   "pct_mapped": 68
+  },
+  {
+   "state": "Gombe",
+   "total": 8,
+   "refuelling": 1,
+   "conversion": 7,
+   "accredited": 7,
+   "with_coords": 1,
+   "pct_mapped": 12
+  },
+  {
+   "state": "Imo",
+   "total": 12,
+   "refuelling": 1,
+   "conversion": 11,
+   "accredited": 11,
+   "with_coords": 4,
+   "pct_mapped": 33
+  },
+  {
+   "state": "Jigawa",
+   "total": 1,
+   "refuelling": 1,
+   "conversion": 0,
+   "accredited": 0,
+   "with_coords": 0,
+   "pct_mapped": 0
+  },
+  {
+   "state": "Kaduna",
+   "total": 24,
+   "refuelling": 4,
+   "conversion": 20,
+   "accredited": 19,
+   "with_coords": 13,
+   "pct_mapped": 54
+  },
+  {
+   "state": "Kano",
+   "total": 78,
+   "refuelling": 9,
+   "conversion": 69,
+   "accredited": 69,
+   "with_coords": 46,
+   "pct_mapped": 59
+  },
+  {
+   "state": "Katsina",
+   "total": 23,
+   "refuelling": 1,
+   "conversion": 22,
+   "accredited": 22,
+   "with_coords": 14,
+   "pct_mapped": 61
+  },
+  {
+   "state": "Kogi",
+   "total": 7,
+   "refuelling": 5,
+   "conversion": 4,
+   "accredited": 2,
+   "with_coords": 7,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Kwara",
+   "total": 16,
+   "refuelling": 5,
+   "conversion": 12,
+   "accredited": 11,
+   "with_coords": 10,
+   "pct_mapped": 62
+  },
+  {
+   "state": "Lagos",
+   "total": 190,
+   "refuelling": 25,
+   "conversion": 168,
+   "accredited": 159,
+   "with_coords": 155,
+   "pct_mapped": 82
+  },
+  {
+   "state": "Nasarawa",
+   "total": 13,
+   "refuelling": 2,
+   "conversion": 11,
+   "accredited": 11,
+   "with_coords": 11,
+   "pct_mapped": 85
+  },
+  {
+   "state": "Niger",
+   "total": 2,
+   "refuelling": 2,
+   "conversion": 0,
+   "accredited": 0,
+   "with_coords": 2,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Ogun",
+   "total": 20,
+   "refuelling": 9,
+   "conversion": 13,
+   "accredited": 12,
+   "with_coords": 17,
+   "pct_mapped": 85
+  },
+  {
+   "state": "Ondo",
+   "total": 2,
+   "refuelling": 1,
+   "conversion": 1,
+   "accredited": 0,
+   "with_coords": 2,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Osun",
+   "total": 2,
+   "refuelling": 2,
+   "conversion": 0,
+   "accredited": 0,
+   "with_coords": 2,
+   "pct_mapped": 100
+  },
+  {
+   "state": "Oyo",
+   "total": 33,
+   "refuelling": 12,
+   "conversion": 27,
+   "accredited": 21,
+   "with_coords": 25,
+   "pct_mapped": 76
+  },
+  {
+   "state": "Rivers",
+   "total": 31,
+   "refuelling": 2,
+   "conversion": 29,
+   "accredited": 28,
+   "with_coords": 16,
+   "pct_mapped": 52
+  },
+  {
+   "state": "Sokoto",
+   "total": 1,
+   "refuelling": 1,
+   "conversion": 0,
+   "accredited": 0,
+   "with_coords": 1,
+   "pct_mapped": 100
   }
  ]
 }

@@ -237,6 +237,26 @@ no_data_states = [s for s in ALL_STATES if s not in states_present]
 operators = Counter(s["operator"] for s in stations if s.get("operator"))
 per_state = Counter(s["state"] for s in stations if s.get("state"))
 categories = Counter(s["category"] for s in stations if s.get("category"))
+# Per-state detail for the CNG Intelligence dashboard (Phase 3, §11):
+# listed / refuelling / conversion / accredited / with-coordinates per
+# state, computed from the same entries — the dashboard never estimates.
+per_state_detail = []
+for st in states_present:
+    rows = [s for s in stations if s.get("state") == st]
+    n = len(rows)
+    coords = sum(1 for s in rows if s.get("lat"))
+    per_state_detail.append({
+        "state": st,
+        "total": n,
+        "refuelling": sum(1 for s in rows if s["type"] in ("refuelling", "both")),
+        "conversion": sum(1 for s in rows if s["type"] in ("conversion", "both")),
+        "accredited": sum(1 for s in rows if s.get("acc")),
+        "with_coords": coords,
+        # Coverage completeness = share of the state's entries that have
+        # coordinates (and so appear on the map). A directory measure,
+        # NOT a measure of the state's real CNG infrastructure.
+        "pct_mapped": round(100 * coords / n) if n else 0,
+    })
 stats = {
     "generated": TODAY,
     "total_records": len(stations),
@@ -262,9 +282,12 @@ stats = {
                         for p in ("exact", "approximate", "town")},
     "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
     "with_phone": sum(1 for s in stations if s.get("phone")),
+    "with_postcode": sum(1 for s in stations if s.get("postcode")),
+    "with_postcode_label": "Entries carrying a postcode in the dataset (6-digit area codes from the registers).",
     "operators": [{"name": n, "count": c} for n, c in operators.most_common(12)],
     "categories": [{"name": n, "count": c} for n, c in sorted(categories.items())],
     "per_state": [{"state": s, "count": per_state[s]} for s in states_present],
+    "per_state_detail": per_state_detail,
 }
 (OUT / "stats.json").write_text(
     json.dumps(stats, ensure_ascii=False, indent=1))
@@ -275,6 +298,36 @@ print("stats.json:", stats["total_records"], "records,",
       stats["needs_reverification"], "need re-verification,",
       stats["states_with_data"], "states,",
       len(no_data_states), "no-data states")
+
+# --- Growth history (Phase 3, §11E) ---------------------------------------
+# One snapshot per day, appended by the daily rebuild (which runs this
+# script as its last step). The dashboard shows growth ONLY from these
+# recorded snapshots — there is no backfilled history, so the first
+# snapshot (19 Nov 2026) is honestly labelled as the baseline and the
+# trend appears as days accumulate. Never fabricate a trend.
+HISTORY_PATH = OUT / "history.json"
+history = []
+if HISTORY_PATH.exists():
+    try:
+        history = json.loads(HISTORY_PATH.read_text())
+        assert isinstance(history, list)
+    except Exception:
+        history = []
+snapshot = {
+    "date": TODAY,
+    "total_records": stats["total_records"],
+    "refuelling_locations": stats["refuelling_locations"],
+    "conversion_centres": stats["conversion_centres"],
+    "picng_register_matched": stats["picng_register_matched"],
+    "states_with_data": stats["states_with_data"],
+    "with_coordinates": stats["with_coordinates"],
+}
+if not any(h.get("date") == TODAY for h in history):
+    history.append(snapshot)
+    history.sort(key=lambda h: h.get("date", ""))
+HISTORY_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=1))
+print("history.json:", len(history), "snapshot(s), latest", history[-1]["date"]
+      if history else "history.json: empty")
 
 # --- Postcode table -------------------------------------------------------
 benin = {"lat": BENIN[0], "lng": BENIN[1], "place": "Benin City centre",
@@ -326,7 +379,7 @@ BASE = "https://findcng.vercel.app"
 urls = [("", "1.0", "daily")]
 for view in ["stations", "centres", "safety", "calculator",
              "news", "outages", "help", "about", "privacy",
-             "coverage", "postcode", "chat"]:
+             "intelligence", "postcode", "chat"]:
     urls.append((f"?view={view}", "0.8", "weekly"))
 for s in states_present:
     urls.append((f"?state={urllib.parse.quote(s)}", "0.7", "weekly"))

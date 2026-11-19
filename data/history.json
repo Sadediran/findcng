@@ -1,0 +1,11 @@
+[
+ {
+  "date": "2026-11-19",
+  "total_records": 721,
+  "refuelling_locations": 134,
+  "conversion_centres": 617,
+  "picng_register_matched": 576,
+  "states_with_data": 30,
+  "with_coordinates": 509
+ }
+]
