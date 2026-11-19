@@ -20,6 +20,8 @@ with open(os.path.expanduser("~/workspace/findcng/.env.local")) as f:
 SB = ENV["SUPABASE_URL"].rstrip("/")
 SRV = ENV["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN = ENV["ADMIN_PASSCODE"]
+DATA_ADMIN = ENV.get("DATA_ADMIN_PASSCODE", "")
+VERIFIER = ENV.get("VERIFIER_PASSCODE", "")
 
 def call(method, url, body=None, headers=None):
     data = json.dumps(body).encode() if body is not None else None
@@ -258,6 +260,12 @@ try:
           and "referrer-policy: strict-origin-when-cross-origin" in hdrs_lower
           and "x-frame-options: sameorigin" in hdrs_lower,
           "curl -I " + BASE)
+    check("Content-Security-Policy present, script-src 'self' without unsafe-inline",
+          "content-security-policy:" in hdrs_lower
+          and "script-src 'self'" in hdrs_lower
+          and "script-src 'self' 'unsafe-inline'" not in hdrs_lower
+          and "object-src 'none'" in hdrs_lower,
+          "curl -I " + BASE)
 except Exception as e:
     check("security headers present", False, str(e)[:120])
 try:
@@ -267,9 +275,9 @@ except Exception as e:
     check("homepage carries the Phase 1 hero", False, str(e)[:120])
 try:
     s, sw = fetch_text(BASE + "/sw.js")
-    check("sw.js cache is findcng-v3.2.2", s == 200 and "findcng-v3.2.2" in sw)
+    check("sw.js cache is findcng-v3.3.6", s == 200 and "findcng-v3.3.6" in sw)
 except Exception as e:
-    check("sw.js cache is findcng-v3.2.2", False, str(e)[:120])
+    check("sw.js cache is findcng-v3.3.6", False, str(e)[:120])
 try:
     s, sm = fetch_text(BASE + "/sitemap.xml")
     check("sitemap lists the new views",
@@ -498,6 +506,313 @@ def check_phase3():
         check("admin-deleted report gone from the live feed", False, "no test report")
 
 check_phase3()
+
+# --- Phase 4 checks (19 Nov 2026): operator portal, RBAC, admin dashboard,
+#     CSP, multilingual safety, offline honesty ------------------------------
+# The operator portal + audit log need sql/003 (operator_submissions,
+# audit_log, availability_reports.source). This section detects whether
+# sql/003 has been run and tests the matching behaviour: the full
+# register -> queue -> approve -> published-state flow when it has, and
+# the honest not_open degradation when it has not. Either way the checks
+# pass only on the behaviour the live site actually shows — nothing is
+# assumed. Every test row created is deleted by id afterwards.
+def check_phase4():
+    def admin(action, code, extra=None):
+        b = {"action": action}
+        if extra:
+            b.update(extra)
+        return call("POST", BASE + "/api/admin", b, headers={"X-Admin-Passcode": code})
+
+    # 1. RBAC: whoami per role; wrong/empty passcode -> 401.
+    s, j = admin("whoami", ADMIN)
+    check("RBAC whoami super_admin", s == 200 and j.get("role") == "super_admin", str(j.get("role")))
+    if DATA_ADMIN:
+        s, j = admin("whoami", DATA_ADMIN)
+        check("RBAC whoami data_admin", s == 200 and j.get("role") == "data_admin", str(j.get("role")))
+    else:
+        check("RBAC whoami data_admin", False, "DATA_ADMIN_PASSCODE not in .env.local")
+    if VERIFIER:
+        s, j = admin("whoami", VERIFIER)
+        check("RBAC whoami verifier", s == 200 and j.get("role") == "verifier", str(j.get("role")))
+    else:
+        check("RBAC whoami verifier", False, "VERIFIER_PASSCODE not in .env.local")
+    s, j = admin("whoami", "wrong-passcode")
+    check("RBAC whoami wrong passcode -> 401", s == 401 and j.get("error") == "wrong passcode", f"HTTP {s}")
+    s, j = admin("whoami", "")
+    check("RBAC whoami empty passcode -> 401", s == 401, f"HTTP {s}")
+
+    # 2. Permission matrix: roles are refused the actions they may not do.
+    s, j = admin("resolve_listing_report", VERIFIER,
+                 {"id": "00000000-0000-0000-0000-000000000000"})
+    check("verifier resolve_listing_report -> 403", s == 403, f"HTTP {s} {j.get('error')}")
+    s, j = admin("review_operator_submission", DATA_ADMIN, {"id": "x", "decision": "approve"})
+    check("data_admin review_operator_submission -> 403", s == 403, f"HTTP {s}")
+    s, j = admin("delete_operator_submission", VERIFIER, {"id": "x"})
+    check("verifier delete_operator_submission -> 403", s == 403, f"HTTP {s}")
+    s, j = admin("delete_operator_submission", DATA_ADMIN, {"id": "x"})
+    check("data_admin delete_operator_submission -> 403", s == 403, f"HTTP {s}")
+    s, j = admin("bogus_action", ADMIN)
+    check("unknown admin action -> 400", s == 400, f"HTTP {s}")
+
+    # 3. New admin actions that work without sql/003.
+    s, j = admin("analytics", ADMIN)
+    a = j.get("analytics", {})
+    check("analytics: live counts (reports_total 4+, directory 721)",
+          s == 200 and (a.get("reports_total") or 0) >= 4 and a.get("directory_total") == 721
+          and a.get("directory_with_coords") == 509,
+          f"reports_total={a.get('reports_total')} dir={a.get('directory_total')} not_open={a.get('not_open')}")
+    s, j = admin("postcode_status", VERIFIER)
+    p = j.get("postcode", {})
+    check("postcode_status: sandbox mode, key never returned",
+          s == 200 and p.get("mode") == "sandbox" and p.get("configured") is True
+          and "nipost_" not in json.dumps(p), str(p))
+    s, j = admin("duplicates", ADMIN)
+    exact = [g for g in j.get("groups", []) if g.get("exact_pin")]
+    ids = {e["id"] for g in exact for e in g["entries"]}
+    check("duplicates: 48 groups, 2 exact-pin (CNG-282/430 + CNG-387/428)",
+          s == 200 and j.get("total_groups") == 48 and j.get("exact_pin_groups") == 2
+          and ids == {"CNG-282", "CNG-430", "CNG-387", "CNG-428"},
+          f"groups={j.get('total_groups')} exact={j.get('exact_pin_groups')}")
+    s, j = admin("data_quality", DATA_ADMIN)
+    q = j.get("quality", {})
+    check("data_quality counts (721 / 509 / 18 phones / 36 stale)",
+          s == 200 and q.get("total") == 721 and q.get("with_coords") == 509
+          and q.get("with_phone") == 18 and q.get("stale_2024") == 36,
+          f"total={q.get('total')} coords={q.get('with_coords')} phone={q.get('with_phone')}")
+    s, j = admin("accreditation_review", VERIFIER)
+    check("accreditation_review counts (36 stale / 9 single-source)",
+          s == 200 and j.get("counts", {}).get("stale_2024") == 36
+          and j.get("counts", {}).get("single_source") == 9, str(j.get("counts")))
+
+    # 4. Operator API validation (testable with or without sql/003 —
+    # validation runs before the table is touched).
+    def op(body, headers=None):
+        return call("POST", BASE + "/api/operator", body, headers)
+    s, j = op({"type": "bogus", "business_name": "Test Business"})
+    check("operator bad type -> 400", s == 400, f"HTTP {s}")
+    s, j = op({"type": "claim", "business_name": "Test Business"})
+    check("operator claim without station -> 400", s == 400, f"HTTP {s} {j.get('error')}")
+    s, j = op({"type": "claim", "station_id": "CNG-999", "business_name": "Test Business",
+               "phone": "08031234567", "proof_reference": "CAC RC 123456"})
+    check("operator unknown station -> 400", s == 400 and j.get("error") == "unknown station_id",
+          f"HTTP {s} {j.get('error')}")
+    s, j = op({"type": "claim", "station_id": "CNG-002", "business_name": "Test Business",
+               "phone": "08031234567"})
+    check("operator claim without proof -> 400", s == 400, f"HTTP {s} {j.get('error')}")
+    s, j = op({"type": "claim", "station_id": "CNG-002", "business_name": "Test Business",
+               "proof_reference": "CAC RC 123456"})
+    check("operator claim without contact -> 400", s == 400, f"HTTP {s} {j.get('error')}")
+    s, j = op({"type": "register", "business_name": "Test Centre",
+               "address": "1 Test Road, Benin City", "state": "NotAState"})
+    check("operator register bad state -> 400", s == 400, f"HTTP {s}")
+    s, j = op({"type": "availability", "station_id": "CNG-002", "business_name": "Test Business",
+               "phone": "08031234567", "status": "bogus"})
+    check("operator availability bad status -> 400", s == 400, f"HTTP {s}")
+    s, j = op({"type": "update", "station_id": "CNG-002", "business_name": "Test Business",
+               "phone": "08031234567", "details": "short"})
+    check("operator update short details -> 400", s == 400, f"HTTP {s}")
+
+    # 5. Same-origin CSRF check on POST routes.
+    s, j = call("POST", BASE + "/api/reports", {"station_id": "CNG-002", "status": "available"},
+                headers={"Origin": "https://evil.example.com"})
+    check("reports POST with foreign Origin -> 403", s == 403, f"HTTP {s}")
+    s, j = call("POST", BASE + "/api/operator", {"type": "bogus"},
+                headers={"Origin": "https://evil.example.com"})
+    check("operator POST with foreign Origin -> 403", s == 403, f"HTTP {s}")
+
+    # 6. Is sql/003 live? A status check for a nonexistent id answers 404
+    # when the table exists, 503 not_open when it does not.
+    s, j = call("GET", BASE + "/api/operator?id=00000000-0000-0000-0000-000000000000")
+    sql003 = (s == 404)
+    check("sql/003 state detected (404 = live, 503 = not run yet)",
+          s in (404, 503), f"HTTP {s} error={j.get('error')}")
+    if not sql003:
+        s, j = op({"type": "register", "business_name": "Test Centre Ltd",
+                   "address": "1 Test Road, Benin City, Edo State", "state": "Edo",
+                   "phone": "08031234567"})
+        check("operator valid submit without sql/003 -> honest 503 not_open",
+              s == 503 and j.get("error") == "not_open", f"HTTP {s} {j.get('error')}")
+        s, j = call("GET", BASE + "/api/operator?station=CNG-002")
+        check("operator claim state without sql/003 -> claimed false",
+              s == 200 and j.get("claimed") is False, str(j))
+        s, j = admin("list_operator_submissions", ADMIN)
+        check("admin operator queue without sql/003 -> not_open",
+              j.get("error") == "not_open", str(j.get("error")))
+        s, j = admin("list_audit_log", ADMIN)
+        check("admin audit log without sql/003 -> not_open",
+              j.get("error") == "not_open", str(j.get("error")))
+        print("NOTE: sql/003 not run — operator end-to-end flow NOT tested live; "
+              "run sql/003_operator_portal.sql in Supabase, then re-run this script.")
+    else:
+        # Full end-to-end flow, all test rows deleted afterwards.
+        # (a) Register -> status check -> admin list -> approve (super).
+        s, j = op({"type": "register", "business_name": "PHASE4 TEST CENTRE",
+                   "address": "1 Test Road, Benin City, Edo State", "state": "Edo",
+                   "phone": "08030000000", "services": "PHASE4 TEST"})
+        reg_id = j.get("id")
+        check("operator register submits (pending)", s == 200 and j.get("ok") is True and reg_id,
+              f"HTTP {s} id={reg_id}")
+        if reg_id:
+            s, j = call("GET", BASE + f"/api/operator?id={reg_id}")
+            sub = j.get("submission") or {}
+            check("operator status check: pending, no phone/email exposed",
+                  s == 200 and sub.get("status") == "pending" and "phone" not in sub
+                  and "email" not in sub, f"HTTP {s} status={sub.get('status')}")
+            s, j = admin("list_operator_submissions", ADMIN, {"status": "pending"})
+            mine = [x for x in j.get("submissions", []) if x.get("id") == reg_id]
+            check("admin operator queue shows the registration",
+                  s == 200 and len(mine) == 1 and mine[0].get("type") == "register",
+                  f"HTTP {s} rows={len(j.get('submissions', []))}")
+            s, j = admin("review_operator_submission", ADMIN,
+                         {"id": reg_id, "decision": "approve", "note": "PHASE4 TEST approve"})
+            check("super approves the registration",
+                  s == 200 and j.get("ok") is True
+                  and (j.get("submission") or {}).get("status") == "approved", f"HTTP {s}")
+            s, j = call("GET", BASE + f"/api/operator?id={reg_id}")
+            check("status check now shows approved",
+                  s == 200 and (j.get("submission") or {}).get("status") == "approved",
+                  f"HTTP {s}")
+            s, j = admin("delete_operator_submission", ADMIN, {"id": reg_id})
+            check("cleanup: test registration deleted", s == 200 and j.get("ok") is True, f"HTTP {s}")
+        else:
+            for name in ("operator status check: pending, no phone/email exposed",
+                         "admin operator queue shows the registration",
+                         "super approves the registration",
+                         "status check now shows approved",
+                         "cleanup: test registration deleted"):
+                check(name, False, "no registration id")
+        # (b) Claim on CNG-002 -> approve as VERIFIER -> claimed:true ->
+        # delete -> claimed:false again.
+        s, j = op({"type": "claim", "station_id": "CNG-002", "business_name": "PHASE4 TEST OP",
+                   "phone": "08030000000", "proof_reference": "PHASE4 TEST CAC RC 999999"})
+        claim_id = j.get("id")
+        check("operator claim submits (pending)", s == 200 and j.get("ok") is True and claim_id,
+              f"HTTP {s} id={claim_id}")
+        if claim_id:
+            s, j = admin("review_operator_submission", VERIFIER,
+                         {"id": claim_id, "decision": "approve",
+                          "verification": "PHASE4 TEST — documentation checked; confirmed by phone"})
+            check("verifier approves the claim",
+                  s == 200 and j.get("ok") is True, f"HTTP {s} {j.get('error')}")
+            s, j = call("GET", BASE + "/api/operator?station=CNG-002")
+            check("approved claim publishes claimed:true with business name",
+                  s == 200 and j.get("claimed") is True and j.get("business_name") == "PHASE4 TEST OP",
+                  str(j))
+            s, j = admin("delete_operator_submission", ADMIN, {"id": claim_id})
+            check("cleanup: test claim deleted", s == 200 and j.get("ok") is True, f"HTTP {s}")
+            s, j = call("GET", BASE + "/api/operator?station=CNG-002")
+            check("claim deleted -> claimed:false again",
+                  s == 200 and j.get("claimed") is False, str(j))
+        else:
+            for name in ("verifier approves the claim",
+                         "approved claim publishes claimed:true with business name",
+                         "cleanup: test claim deleted",
+                         "claim deleted -> claimed:false again"):
+                check(name, False, "no claim id")
+        # (c) Availability update on CNG-003 -> approve -> an
+        # "Operator confirmed" report appears in the live feed -> delete.
+        s, j = op({"type": "availability", "station_id": "CNG-003",
+                   "business_name": "PHASE4 TEST OP", "phone": "08030000000",
+                   "status": "available", "queue_minutes": 5})
+        av_id = j.get("id")
+        check("operator availability submits (pending)", s == 200 and j.get("ok") is True and av_id,
+              f"HTTP {s} id={av_id}")
+        pub_id = None
+        if av_id:
+            s, j = admin("review_operator_submission", ADMIN,
+                         {"id": av_id, "decision": "approve", "note": "PHASE4 TEST"})
+            pub_id = j.get("published_report_id")
+            check("approving availability publishes an operator report",
+                  s == 200 and j.get("ok") is True and pub_id, f"HTTP {s} report={pub_id}")
+            if pub_id:
+                s, j = call("GET", BASE + "/api/reports")
+                mine = [x for x in j.get("reports", []) if x.get("id") == pub_id]
+                check("published report is in the live feed with source=operator",
+                      len(mine) == 1 and mine[0].get("source") == "operator"
+                      and mine[0].get("station_id") == "CNG-003", f"HTTP {s} rows={len(mine)}")
+                s, j = admin("delete_availability_report", ADMIN, {"id": pub_id})
+                check("cleanup: published operator report deleted",
+                      s == 200 and j.get("ok") is True, f"HTTP {s}")
+            else:
+                check("published report is in the live feed with source=operator", False, "no report id")
+                check("cleanup: published operator report deleted", False, "no report id")
+            s, j = admin("delete_operator_submission", ADMIN, {"id": av_id})
+            check("cleanup: test availability submission deleted",
+                  s == 200 and j.get("ok") is True, f"HTTP {s}")
+        else:
+            for name in ("approving availability publishes an operator report",
+                         "published report is in the live feed with source=operator",
+                         "cleanup: published operator report deleted",
+                         "cleanup: test availability submission deleted"):
+                check(name, False, "no availability submission id")
+        # (d) Rejection publishes nothing.
+        s, j = op({"type": "update", "station_id": "CNG-004", "business_name": "PHASE4 TEST OP",
+                   "phone": "08030000000", "details": "PHASE4 TEST — change the hours to 7am-9pm"})
+        upd_id = j.get("id")
+        if upd_id:
+            s, j = admin("review_operator_submission", VERIFIER,
+                         {"id": upd_id, "decision": "reject", "note": "PHASE4 TEST reject"})
+            check("verifier rejects the update",
+                  s == 200 and (j.get("submission") or {}).get("status") == "rejected", f"HTTP {s}")
+            s, j = admin("review_operator_submission", ADMIN,
+                         {"id": upd_id, "decision": "approve"})
+            check("already-reviewed submission cannot be re-reviewed (409)",
+                  s == 409, f"HTTP {s}")
+            s, j = admin("delete_operator_submission", ADMIN, {"id": upd_id})
+            check("cleanup: test update submission deleted", s == 200 and j.get("ok") is True, f"HTTP {s}")
+        else:
+            for name in ("verifier rejects the update",
+                         "already-reviewed submission cannot be re-reviewed (409)",
+                         "cleanup: test update submission deleted"):
+                check(name, False, "no update id")
+        # (e) Audit log recorded the reviews.
+        s, j = admin("list_audit_log", ADMIN)
+        entries = j.get("entries") or []
+        ops = [e for e in entries if str(e.get("action", "")).startswith("operator_")]
+        check("audit log records the operator reviews",
+              s == 200 and len(ops) >= 3, f"HTTP {s} operator entries={len(ops)}")
+
+    # 7. Reports GET: source field is consistent (all rows carry it after
+    # sql/003, none before) and only ever community/operator.
+    s, j = call("GET", BASE + "/api/reports")
+    rows = j.get("reports", [])
+    sources = {x.get("source") for x in rows if "source" in x}
+    check("reports GET source values are only community/operator",
+          s == 200 and sources <= {"community", "operator"}, f"HTTP {s} sources={sources}")
+
+    # 8. Frontend shell: operator view + safety i18n + admin script live,
+    # no inline onclick handlers anywhere in the served HTML.
+    try:
+        s, body = fetch_text(BASE + "/")
+        check("homepage has the operator view + safety languages",
+              s == 200 and 'id="view-operator"' in body and 'data-lang="ha"' in body
+              and 'data-lang="yo"' in body and 'data-lang="ig"' in body
+              and 'id="offline-bar"' in body and 'class="skip-link"' in body)
+        check("homepage has no inline onclick handlers (CSP)",
+              s == 200 and "onclick=" not in body and "onerror=" not in body)
+        s, i18n = fetch_text(BASE + "/js/safety-i18n.js")
+        check("js/safety-i18n.js serves all three languages",
+              s == 200 and "SAFETY_HA" in i18n and "SAFETY_YO" in i18n and "SAFETY_IG" in i18n
+              and "native speaker" in i18n)
+        s, adm = fetch_text(BASE + "/admin.html")
+        check("admin.html loads js/admin.js, no inline script",
+              s == 200 and 'src="js/admin.js"' in adm and "<script>" not in adm)
+        s, ajs = fetch_text(BASE + "/js/admin.js")
+        check("js/admin.js serves the dashboard",
+              s == 200 and "list_operator_submissions" in ajs and "list_audit_log" in ajs)
+        s, news = fetch_text(BASE + "/js/news.js")
+        check("js/news.js no longer inlines the seed (single source of truth)",
+              s == 200 and "SEED_NEWS" not in news and "news-seed.json" in news)
+    except Exception as e:
+        for name in ("homepage has the operator view + safety languages",
+                     "homepage has no inline onclick handlers (CSP)",
+                     "js/safety-i18n.js serves all three languages",
+                     "admin.html loads js/admin.js, no inline script",
+                     "js/admin.js serves the dashboard",
+                     "js/news.js no longer inlines the seed (single source of truth)"):
+            check(name, False, str(e)[:120])
+
+check_phase4()
 
 print()
 print("RESULT:", "ALL PASS — live APIs verified end to end" if not fails else f"{len(fails)} FAILURES: {fails}")
