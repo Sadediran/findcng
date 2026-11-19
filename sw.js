@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.0.0"; // bumped 19 Nov 2026 — Phase 1 of the master transformation: homepage restructure (§5), 10-section navigation (§4), Postcode Explorer + Coverage views, API hardening (station validation, report dedupe, fail-closed admin), build-time name cleaning
+const CACHE = "findcng-v3.1.0"; // bumped 19 Nov 2026 — Phase 2 of the master transformation: NIPOST integration (proxy v2 with sandbox/live mode, L2-on-sandbox cap, structured errors; reference endpoints lgas/districts/areas), Postcode Explorer v2 (segment naming, validity + autofill, autocomplete, nearby discovery), verification cards on station/centre profiles, duplicate-pair review in admin
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

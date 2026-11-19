@@ -112,6 +112,36 @@
     }
     return `<span class="badge unver">Not on Pi-CNG register</span>`;
   }
+  // Verification card (Phase 2, §10): every profile shows its
+  // verification status + source + last verification date where known.
+  // Expired or unconfirmed accreditation is never shown as valid.
+  function verificationCard(s) {
+    let status, date;
+    if (s.live) {
+      status = s.liveStatus === "active"
+        ? "✓ Officially accredited — live Pi-CNG register."
+        : "Registered on the Pi-CNG register, but not yet Active — accreditation is not confirmed.";
+      date = s.liveListedAt ? fmtDate(s.liveListedAt) : null;
+    } else if (s.acc) {
+      status = "✓ Officially accredited — matched on the Pi-CNG accredited centres register.";
+      date = F.REGISTER_DATES.centres;
+    } else if (s.refReg) {
+      status = "✓ On the Pi-CNG refuelling stations register.";
+      date = F.REGISTER_DATES.refuel;
+    } else if (s.confidence === "stale-2024-list") {
+      status = "⚠ Needs re-verification — from a 2024 list, not re-checked against a current source. Treat the details as unconfirmed.";
+      date = null;
+    } else if (s.confidence === "single-source") {
+      status = "Single source — needs a second check before the details can be treated as confirmed.";
+      date = null;
+    } else {
+      status = "Listed from a public source — no Pi-CNG register match, so no accreditation is claimed for this entry.";
+      date = null;
+    }
+    return `<div class="card"><h3 style="margin-top:0">Verification</h3>` +
+      `<p style="margin:0 0 6px">${status}</p>` +
+      `<p class="small" style="margin:0">Source: ${esc(s.src)}<br>Last verification: ${date ? esc(date) : "not recorded for this entry"}</p></div>`;
+  }
   // Coordinate precision (2.1 data contract): entry.coord_precision is
   // "exact" | "approximate" | "town". Town-level pins are locality
   // centroids, NOT exact locations — the UI must say so plainly, never
@@ -856,13 +886,14 @@
     if (!p.valid) { msg.textContent = p.reason; msg.className = "notice err"; msg.classList.remove("hidden"); return; }
     if (p.kind === "ndaps") {
       msg.textContent = "✓ That code is well formed" +
-        (p.stateConfirmed ? "" : " (its state code is not on the confirmed list yet — NIPOST has only published 12 state codes so far)") +
-        ". Postcodes cannot give an exact map point, so use your location or tap the map to set your spot — your postcode is saved as your label.";
+        (p.stateName ? ` — ${p.segments.state} is ${p.stateName}.` : ` — but ${p.segments.state} is not in NIPOST's 37-state reference list, so double-check it.`) +
+        " A postcode cannot give an exact map point, so use your location or tap the map to set your exact spot.";
       msg.className = "notice ok"; msg.classList.remove("hidden");
       F.postcode.lookupApi(p.code).then((env) => {
         const res = env && env.result;
         if (res && res.valid) {
-          msg.textContent = "✓ NIPOST confirms this postcode is assigned" +
+          msg.textContent = "✓ " + (env.mode === "live" ? "NIPOST's live database" : "NIPOST's sandbox") +
+            " confirms this postcode is assigned" +
             (res.lga ? " — LGA: " + res.lga : "") +
             ". Use your location or tap the map to set your exact spot.";
         }
@@ -899,19 +930,82 @@
     );
   }
 
-  // ---------------- postcode explorer (Phase 1) ----------------
-  // Reuses the postcode module: 6-digit codes resolve through the local
-  // table (and offer "see stations near here"); 11-character codes are
-  // parsed into segments and checked against the NIPOST sandbox with an
-  // honest note about what the sandbox can and cannot confirm. This is
-  // NOT the Phase 2 NIPOST integration — no new API use, no live
-  // validation claim.
+  // ---------------- postcode explorer (Phase 2) ----------------
+  // NDAPS codes: segments are parsed offline (state named from NIPOST's
+  // 37-state reference list; LGA named and district/area confirmed via
+  // the free reference endpoints), then the code is checked against
+  // NIPOST — validity, plus address autofill on keys granted above L1
+  // (our current test key is L1-only, so the check falls back to L1 and
+  // says so). 6-digit codes resolve through the local table and offer
+  // nearby stations with distances. Nothing here claims a live
+  // validation unless the key is a live one — the mode line says which.
+  const SANDBOX_SAMPLE = "FC-01-A01-KP-27"; // NIPOST's published sandbox code (valid:true under a test key)
+  let explorerSuggestTimer = null;
+
+  function explorerModeLabel(mode) {
+    return mode === "live" ? "NIPOST live database"
+      : mode === "sandbox" ? "NIPOST sandbox (test key)" : "NIPOST";
+  }
+
+  async function refreshExplorerMode() {
+    const el = $("explorer-mode");
+    if (!el) return;
+    const st = await F.postcode.statusApi();
+    if (!st || st.configured === false) {
+      el.textContent = "Online check: not set up on this server — codes are checked on structure only.";
+    } else if (st.mode === "live") {
+      el.textContent = "Online check: NIPOST live database — real building codes validate here.";
+    } else {
+      el.textContent = "Online check: NIPOST sandbox (test key) — only NIPOST's published sample codes validate here. Real building codes need a live key.";
+    }
+  }
+
+  // Lookup with L2 first on sandbox keys (the autofill demo), falling
+  // back to L1 when the key is not granted above L1 (our current key).
+  async function lookupWithFallback(code) {
+    const st = await F.postcode.statusApi();
+    const mode = (st && st.mode) || "unknown";
+    if (!st || st.configured === false) return { env: { configured: false }, l2denied: false, mode };
+    let env = await F.postcode.lookupApi(code, mode === "sandbox" ? 2 : 1);
+    let l2denied = false;
+    if (env && (env.error === "not_granted" || env.error === "insufficient_credits")) {
+      l2denied = true;
+      env = await F.postcode.lookupApi(code, 1);
+    }
+    return { env, l2denied, mode };
+  }
+
+  // Nearest mapped stations to a point — the explorer's discovery
+  // preview. Distances are haversine from VERIFIED station coordinates;
+  // a postcode never supplies coordinates (see the NDAPS discovery block).
+  function nearestPreviewHtml(lat, lng, count) {
+    const near = stations
+      .filter((s) => s.lat && s.lng)
+      .map((s) => ({ s, d: haversineKm(lat, lng, s.lat, s.lng) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, count || 3);
+    if (!near.length) {
+      return `<p class="small">No mapped stations near here yet — only ${onMapCount()} of ${stations.length} entries have coordinates so far. Use the Stations tab to browse the full list by state.</p>`;
+    }
+    return `<h3 style="margin-bottom:6px">Nearest mapped stations</h3>` + near.map(({ s, d }) =>
+      `<div class="card station st-${statusOf(s.id)}" data-id="${s.id}">` +
+      `<h3>${esc(s.name)}</h3>` +
+      `<p class="meta">${esc(s.address || "")} · ${esc(locLabel(s))} · <span class="dist-chip">${fmtKm(d)}</span></p>` +
+      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)}</div></div>`
+    ).join("");
+  }
+  function wirePreviewClicks(box) {
+    box.querySelectorAll(".station[data-id]").forEach((el) =>
+      el.addEventListener("click", () => openStation(el.dataset.id)));
+  }
+
   function explorerGo() {
     const raw = $("explorer-input").value;
     const p = F.postcode.parse(raw);
     const msg = $("explorer-msg");
     const out = $("explorer-result");
     msg.classList.add("hidden");
+    $("explorer-suggest").innerHTML = "";
     out.innerHTML = "";
     if (!p.valid) {
       msg.textContent = p.reason === "empty"
@@ -920,31 +1014,7 @@
       msg.className = "notice err"; msg.classList.remove("hidden");
       return;
     }
-    if (p.kind === "ndaps") {
-      const s = p.segments;
-      out.innerHTML =
-        `<div class="seg-chips"><span><b>State</b><br>${esc(s.state)}${p.stateConfirmed ? " ✓" : ""}</span>` +
-        `<span><b>LGA</b><br>${esc(s.lga)}</span><span><b>District</b><br>${esc(s.district)}</span>` +
-        `<span><b>Area</b><br>${esc(s.area)}</span><span><b>Building</b><br>${esc(s.building)}</span></div>` +
-        `<p class="small">${p.stateConfirmed ? "The state code is on NIPOST's confirmed list." : "The state code is not on NIPOST's confirmed list yet — NIPOST has only published 12 state codes so far, so this is not a rejection."} A building code identifies one building, but NIPOST does not give out building coordinates — set your exact spot with GPS or a map tap.</p>` +
-        `<p class="small" id="explorer-api">Checking the NIPOST sandbox…</p>`;
-      F.postcode.lookupApi(p.code).then((env) => {
-        const el = $("explorer-api");
-        if (!el) return;
-        const res = env && env.result;
-        if (res && res.valid) {
-          el.textContent = "✓ NIPOST's sandbox confirms this postcode is assigned" +
-            (res.lga ? " — LGA: " + res.lga : "") + ".";
-        } else if (res) {
-          el.textContent = "The sandbox did not confirm this code — it only recognises NIPOST's published sample codes, so a real building code is not expected to resolve there. The structure above is valid; full live validation needs a live NIPOST key.";
-        } else if (env && env.error) {
-          el.textContent = F.postcode.errorMessage(env.error);
-        } else {
-          el.textContent = "The online check is unavailable right now — the structure above is still valid; try again later.";
-        }
-      });
-      return;
-    }
+    if (p.kind === "ndaps") { explorerNdaps(p, out); return; }
     F.postcode.resolveSix(p.code).then((hit) => {
       if (!hit) {
         msg.textContent = "We don't have that postcode area yet — the app only knows a small set of 6-digit codes so far. Use your location or tap the map instead.";
@@ -952,12 +1022,187 @@
         return;
       }
       out.innerHTML = `<p><b>📍 ${esc(hit.place)}</b><br><span class="small">Approximate ${hit.level === "exact" ? "district" : "dispatch district"} centre — a 6-digit code covers a whole area, not one building.</span></p>` +
-        `<button class="btn" id="explorer-nearby">See stations near here</button>`;
+        nearestPreviewHtml(hit.lat, hit.lng, 3) +
+        `<button class="btn" id="explorer-nearby">See all stations near here</button>`;
+      wirePreviewClicks(out);
       $("explorer-nearby").addEventListener("click", () => {
         setUserLoc(hit.lat, hit.lng, hit.place + " — postcode " + p.code);
         showView("map");
       });
     });
+  }
+
+  function explorerNdaps(p, out) {
+    const s = p.segments;
+    out.innerHTML =
+      `<div class="seg-chips"><span><b>State</b><br>${esc(s.state)}${p.stateName ? "<br>" + esc(p.stateName) : ""}</span>` +
+      `<span><b>LGA</b><br>${esc(s.lga)}<br><span id="explorer-lga-name">…</span></span><span><b>District</b><br>${esc(s.district)}<br><span id="explorer-district-mark">…</span></span>` +
+      `<span><b>Area</b><br>${esc(s.area)}<br><span id="explorer-area-mark">…</span></span><span><b>Building</b><br>${esc(s.building)}</span></div>` +
+      `<p class="small" id="explorer-seg-note">${p.stateName ? `State ${esc(s.state)} is ${esc(p.stateName)} (NIPOST reference list).` : `State ${esc(s.state)} is not in NIPOST's 37-state reference list — double-check the code.`} A building code identifies one building, but NIPOST does not give out building coordinates — set your exact spot with GPS or a map tap to find stations near it.</p>` +
+      `<p class="small" id="explorer-api">Checking with NIPOST…</p>` +
+      `<div id="explorer-autofill"></div>` +
+      `<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Find CNG near this postcode</h3>` +
+      `<p class="small" style="margin-top:0">A postcode has no coordinates in this app, so set your exact spot — then the nearest stations appear with distances.</p>` +
+      `<div class="detail-actions"><button class="btn" id="explorer-gps">📍 Use my location</button>` +
+      `<button class="btn outline" id="explorer-mappick">🗺️ Pick on the map</button></div>` +
+      `<div id="explorer-nearby"></div></div>`;
+    // Reference enrichment (free endpoints): name the LGA, confirm the
+    // district + area codes are listed under that state+LGA. Each step
+    // degrades silently — the segments above stay correct without them.
+    explorerReference(p);
+    // Validity (+ autofill where the key allows it).
+    lookupWithFallback(p.code).then(({ env, l2denied, mode }) => {
+      const el = $("explorer-api");
+      if (!el) return;
+      const res = env && env.result;
+      if (env && env.configured === false) {
+        el.textContent = "The online check is not set up on this server — the structure above is still valid.";
+        return;
+      }
+      if (!env || (env && env.error)) {
+        el.textContent = env && env.error ? F.postcode.errorMessage(env.error)
+          : "The online check is unavailable right now — the structure above is still valid; try again later.";
+        return;
+      }
+      if (!res) {
+        el.textContent = "The online check is unavailable right now — the structure above is still valid; try again later.";
+        return;
+      }
+      const where = explorerModeLabel(mode);
+      if (res.valid) {
+        el.textContent = `✓ Confirmed assigned — ${where}.`;
+        const af = $("explorer-autofill");
+        if (af) {
+          if (res.state || res.lga || res.locality || res.houseAddress) {
+            af.innerHTML = `<div class="card"><h3 style="margin-top:0">Address on file (NIPOST autofill)</h3><p style="margin:0">` +
+              [res.houseAddress, res.locality, res.lga, res.state, res.zone].filter(Boolean).map(esc).join("<br>") +
+              `</p></div>`;
+          } else if (l2denied) {
+            af.innerHTML = `<p class="small">Address details need NIPOST access above L1 — this key is L1-only, so autofill is not available here. Validity is confirmed above.</p>`;
+          } else if (mode === "live") {
+            af.innerHTML = `<p class="small">Address autofill needs a higher NIPOST access level (L2+) — this integration only uses L1 validity on a live key.</p>`;
+          }
+        }
+      } else if (res.status === "not_found") {
+        el.textContent = mode === "sandbox"
+          ? "Not found in the sandbox — it only holds NIPOST's published sample codes, so a real building code is not expected to resolve here. The structure above is valid. Try the sample code below to see a confirmed check."
+          : "NIPOST has no record of this postcode — it may be unassigned or mistyped. The structure above is valid; double-check the code or find it at postcode.gov.ng/find.";
+      } else {
+        el.textContent = "NIPOST did not confirm this code. The structure above is valid; double-check the code and try again.";
+      }
+    });
+    // Discovery buttons.
+    $("explorer-gps").addEventListener("click", explorerGps);
+    $("explorer-mappick").addEventListener("click", () => {
+      showView("map");
+      toast("Tap the map to drop your pin — the nearest stations appear below.");
+    });
+  }
+
+  function explorerReference(p) {
+    const s = p.segments;
+    if (!p.stateConfirmed) return; // reference endpoints need a real state code
+    F.postcode.lgasApi(s.state).then((env) => {
+      const el = $("explorer-lga-name");
+      if (!el) return;
+      const list = env && env.result && env.result.lgas;
+      if (!Array.isArray(list)) { el.textContent = ""; return; }
+      const hit = list.find((x) => x.code === s.lga);
+      el.textContent = hit ? hit.name : "not in NIPOST's LGA list for this state";
+    });
+    F.postcode.districtsApi(s.state, s.lga).then((env) => {
+      const el = $("explorer-district-mark");
+      if (!el) return;
+      const list = env && env.result && env.result.districts;
+      if (!Array.isArray(list)) { el.textContent = ""; return; }
+      el.textContent = list.some((x) => x.code === s.district) ? "✓ listed" : "not listed";
+    });
+    F.postcode.areasApi(s.state, s.lga, s.district).then((env) => {
+      const el = $("explorer-area-mark");
+      if (!el) return;
+      const list = env && env.result && env.result.areas;
+      if (!Array.isArray(list)) { el.textContent = ""; return; }
+      el.textContent = list.some((x) => x.code === s.area) ? "✓ listed" : "not listed";
+    });
+  }
+
+  function explorerGps() {
+    const box = $("explorer-nearby");
+    if (!box) return;
+    if (!navigator.geolocation) {
+      box.innerHTML = `<p class="notice err">Your device does not support location. Pick on the map instead.</p>`;
+      return;
+    }
+    box.innerHTML = `<p class="small">Getting your location…</p>`;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        box.innerHTML = `<p class="small" id="explorer-reverse">Looking up this spot's postcode…</p>` +
+          nearestPreviewHtml(lat, lng, 3) +
+          `<button class="btn" id="explorer-see-all">See all stations near here</button>`;
+        wirePreviewClicks(box);
+        $("explorer-see-all").addEventListener("click", () => {
+          setUserLoc(lat, lng, "Your location (GPS)");
+          showView("map");
+        });
+        // Reverse lookup: the postcode AT this spot, if NIPOST has one
+        // within range. In the sandbox that is almost never — said plainly.
+        F.postcode.reverseApi(lat, lng).then((env) => {
+          const el = $("explorer-reverse");
+          if (!el) return;
+          const res = env && env.result;
+          const foundCode = res && (res.postcode || res.code || (res.data && res.data.postcode));
+          if (res && res.found && foundCode) {
+            el.textContent = `NIPOST has postcode ${foundCode} for this spot.`;
+          } else if (res && res.found === false) {
+            el.textContent = "NIPOST has no postcode within 25 m of this spot in the sandbox — the sandbox only covers sample places. Your nearest stations are below.";
+          } else {
+            el.textContent = "";
+          }
+        });
+      },
+      () => {
+        box.innerHTML = `<p class="notice err">Could not get your location — check that location is allowed for this site, or pick on the map instead.</p>`;
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  }
+
+  // Autocomplete while typing a partial NDAPS code (segment-aware: NIPOST
+  // completes one segment at a time). Sandbox only: the current docs say
+  // autocomplete consumes credits, and on a live key every keystroke
+  // would spend them — so in live mode no suggestions are offered and
+  // the Check button is the way in.
+  function explorerSuggest() {
+    const input = $("explorer-input");
+    const box = $("explorer-suggest");
+    if (!input || !box) return;
+    clearTimeout(explorerSuggestTimer);
+    const raw = input.value;
+    if (!/[A-Za-z]/.test(raw)) { box.innerHTML = ""; return; }
+    explorerSuggestTimer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (!q || !/[A-Za-z]/.test(q)) { box.innerHTML = ""; return; }
+      const st = await F.postcode.statusApi();
+      if (!st || st.mode !== "sandbox") { box.innerHTML = ""; return; }
+      const env = await F.postcode.searchApi(q);
+      const res = env && env.result;
+      const sugg = res && res.suggestions;
+      if (!Array.isArray(sugg) || !sugg.length) { box.innerHTML = ""; return; }
+      const last = q.split(/[\s-]+/).filter(Boolean).pop() || "";
+      const fresh = sugg.filter((x) => x && x.code && x.code.toUpperCase() !== last.toUpperCase());
+      if (!fresh.length) { box.innerHTML = ""; return; }
+      box.innerHTML = `<span class="small">NIPOST suggests (${esc(res.segment || "segment")}): </span>` +
+        fresh.slice(0, 5).map((x) => `<button type="button" class="suggest-chip" data-code="${esc(x.code)}">${esc(x.code)}${x.label ? " — " + esc(x.label) : ""}</button>`).join("");
+      box.querySelectorAll(".suggest-chip").forEach((b) =>
+        b.addEventListener("click", () => {
+          const parts = input.value.trim().split(/[\s-]+/).filter(Boolean);
+          parts[parts.length - 1] = b.dataset.code;
+          input.value = parts.join(" ") + " ";
+          input.focus();
+          box.innerHTML = "";
+        }));
+    }, 300);
   }
 
   // ---------------- station list ----------------
@@ -1278,6 +1523,7 @@
             ? `<button class="btn yellow" style="margin-top:8px" onclick="backToNormal('${s.id}')">✅ Back to normal — gas is back</button>` : "") +
           `</div>`) +
       `<div class="card"><h3 style="margin-top:0">Opening hours</h3>${hoursHtml(s)}</div>` +
+      verificationCard(s) +
       `<div class="card"><h3 style="margin-top:0">Services</h3>${servicesHtml(s)}</div>` +
       `<div class="card"><h3 style="margin-top:0">Price</h3>${priceHtml(s)}</div>` +
       (s.live ? "" : `<div class="card"><h3 style="margin-top:0">Reliability — last 30 days</h3><div id="reliability-box"><p class="small">Loading report history…</p></div></div>`) +
@@ -1692,6 +1938,12 @@
     // Postcode explorer (Phase 1).
     $("explorer-go").addEventListener("click", explorerGo);
     $("explorer-input").addEventListener("keydown", (e) => { if (e.key === "Enter") explorerGo(); });
+    $("explorer-input").addEventListener("input", explorerSuggest);
+    $("explorer-sample").addEventListener("click", () => {
+      $("explorer-input").value = SANDBOX_SAMPLE;
+      explorerGo();
+    });
+    refreshExplorerMode();
     // Latest-updates section refreshes whenever the news module renders.
     document.addEventListener("findcng:news", renderHomeNews);
     renderHomeSavings();

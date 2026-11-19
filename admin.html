@@ -44,6 +44,18 @@
     <p class="result-count" id="lr-count"></p>
     <div id="lr-list"></div>
     </div>
+
+    <div class="card" id="panel-dupes">
+      <h3 style="margin-top:0">Data review — suspected duplicate places</h3>
+      <p class="small" style="margin-top:0">Two pairs of entries share the same <b>exact</b> pin and look like one physical place each. They were flagged by the 19 Nov 2026 data audit and are <b>not</b> merged — merging needs Saheed's decision. (46 other same-coordinate groups are coarse town/approximate pins and are expected, not duplicates.)</p>
+      <p style="margin:0 0 10px"><b>Pair 1 — Lugbe, Abuja</b> (8.9621508, 7.3473246)<br>
+      <a href="index.html?station=CNG-282" target="_blank" rel="noopener">CNG-282 — ARUS CNG 2</a><br>
+      <a href="index.html?station=CNG-430" target="_blank" rel="noopener">CNG-430 — Automobiles R Us Nig Ltd</a></p>
+      <p style="margin:0"><b>Pair 2 — Jahi, Abuja</b> (9.0950153, 7.4461637)<br>
+      <a href="index.html?station=CNG-387" target="_blank" rel="noopener">CNG-387 — Autospa</a><br>
+      <a href="index.html?station=CNG-428" target="_blank" rel="noopener">CNG-428 — Automotive Gas Nigeria Services Ltd — Auto Spa</a></p>
+      <p class="small" style="margin:10px 0 0">Decision needed: merge each pair into one listing, or keep both register rows? If merging, fix it in the master dataset (<code>~/workspace/cng-project/data/stations.json</code>), re-run <code>build-data.py</code>, and redeploy — never merge from here.</p>
+    </div>
   </div>
 
   <div class="card">

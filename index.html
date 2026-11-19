@@ -233,13 +233,15 @@
       <input type="text" id="explorer-input" placeholder="e.g. 300001 or FC 02 A09 DB 09" inputmode="text" autocomplete="postal-code" aria-label="Postcode">
       <button class="btn small" id="explorer-go">Check</button>
     </div>
+    <div id="explorer-suggest"></div>
+    <p id="explorer-mode" class="small" style="margin:8px 0 0">Online check: loading…</p>
     <p id="explorer-msg" class="notice hidden"></p>
     <div id="explorer-result"></div>
   </div>
   <div class="card">
     <h3 style="margin-top:0">The two systems</h3>
     <p style="margin:0"><b>6-digit code</b> (e.g. 300001) — covers a whole district. The app knows a small set of these so far and centres the map on the district.<br><br>
-    <b>11-character code</b> (e.g. FC 02 A09 DB 09) — identifies one building: state, LGA, district, area, building. NIPOST launched it on 1 October 2026. The app checks the code's structure here; NIPOST does not give out building coordinates, so the app asks you to set your exact spot with GPS or a map tap.</p>
+    <b>11-character code</b> (e.g. FC 02 A09 DB 09) — identifies one building: state, LGA, district, area, building. NIPOST launched it on 1 October 2026. The app parses the code into its five segments, names the state and LGA from NIPOST's reference data, and checks whether the code is assigned — in the sandbox for now. NIPOST does not give out building coordinates, so the app asks you to set your exact spot with GPS or a map tap.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Find your building's code</h3>
@@ -247,7 +249,8 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">Online check — sandbox</h3>
-    <p class="small" style="margin:0">The online check uses NIPOST's developer sandbox, which only recognises NIPOST's published sample codes. A real building code is checked on its structure here; full live validation of real codes needs a live NIPOST key, which is still to be arranged. Nothing here is presented as a live official validation unless the sandbox confirms it.</p>
+    <p class="small" style="margin:0 0 10px">The online check runs on NIPOST's developer sandbox (test key), which only recognises NIPOST's published sample codes — a real building code is checked on its structure here and shows as "not found" in the sandbox. Full live validation of real codes needs a live NIPOST key (verified KYB + granted access), which is still to be arranged. Nothing here is presented as a live official validation unless the sandbox confirms it. The current key is L1-only, so address autofill is not available yet.</p>
+    <button class="btn outline small" id="explorer-sample">Try the sandbox sample code (FC-01-A01-KP-27)</button>
   </div>
 </section>
 
