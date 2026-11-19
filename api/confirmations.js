@@ -5,7 +5,7 @@
 // If the report_confirmations table does not exist yet (sql/001 not run),
 // both routes answer { ok: false, error: "not_open" } — the app shows
 // "Confirmations aren't open yet" instead of crashing.
-import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError } from "./_lib.js";
+import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation } from "./_lib.js";
 
 const VOTES = new Set(["yes", "unsure", "no"]);
 
@@ -37,6 +37,9 @@ export default async function handler(req, res) {
       }
       if (!stationId || stationId.length > 40) {
         return json(res, 400, { ok: false, error: "station_id is required" });
+      }
+      if (!isKnownStation(stationId)) {
+        return json(res, 400, { ok: false, error: "unknown station_id" });
       }
       if (!VOTES.has(vote)) {
         return json(res, 400, { ok: false, error: "vote must be yes, unsure or no" });
@@ -78,6 +81,7 @@ export default async function handler(req, res) {
       return json(res, 503, { ok: false, error: "not_open",
         message: "Confirmations are not open yet — the database table is still being set up." });
     }
-    return json(res, 500, { ok: false, error: "Could not reach the database. " + String(e.message || e).slice(0, 160) });
+    console.error("confirmations failed:", String((e && e.message) || e).slice(0, 200));
+    return json(res, 500, { ok: false, error: "Could not reach the database. Please try again." });
   }
 }

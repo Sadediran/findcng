@@ -5,6 +5,7 @@
 // dependency needed. The service key NEVER leaves the server; the browser
 // only ever talks to these /api routes.
 import { createHash, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || "";
 export const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -66,14 +67,43 @@ export function reporterHash(req) {
 }
 
 // --- Admin passcode -------------------------------------------------------
-// Env ADMIN_PASSCODE; default "findcng-admin" — Saheed MUST change it in
-// Vercel (see README). Compared in constant time.
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || "findcng-admin";
+// Env ADMIN_PASSCODE. FAILS CLOSED: when the env var is missing or empty,
+// no passcode is accepted at all (there is no default — a default
+// passcode is a back door). Set it in Vercel (Production, secret) and in
+// .env.local (see README). Compared in constant time.
+const ADMIN_PASSCODE = (process.env.ADMIN_PASSCODE || "").trim();
 export function checkAdminPasscode(req) {
+  if (!ADMIN_PASSCODE) return false;
   const given = req.headers["x-admin-passcode"] || "";
   const a = Buffer.from(String(given));
   const b = Buffer.from(ADMIN_PASSCODE);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// --- Station-id validation (Phase 1) ------------------------------------
+// POST routes only accept reports/confirmations/listing-reports for
+// station ids that exist in data/stations.json — fake ids (e.g. CNG-999)
+// used to be accepted and stored. Loaded once per instance; the file is
+// bundled into the functions via vercel.json includeFiles. If the file
+// cannot be read at all, validation is skipped (fail open, logged) rather
+// than blocking every real report — the old behaviour was no validation.
+let stationIds = null; // null = not loaded yet (or load failed)
+export function loadStationIds() {
+  if (stationIds !== null) return stationIds;
+  try {
+    const list = JSON.parse(readFileSync(new URL("../data/stations.json", import.meta.url), "utf8"));
+    stationIds = new Set((list || []).map((s) => s.id).filter(Boolean));
+  } catch (e) {
+    console.error("loadStationIds failed — station validation disabled:",
+      String((e && e.message) || e).slice(0, 120));
+    return null;
+  }
+  return stationIds;
+}
+export function isKnownStation(stationId) {
+  const ids = loadStationIds();
+  if (ids === null) return true; // file unavailable: fail open (logged above)
+  return ids.has(stationId);
 }
 
 // --- Tiny in-memory rate limit (per serverless instance) ------------------

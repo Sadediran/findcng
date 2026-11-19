@@ -1,6 +1,7 @@
 // POST /api/admin — moderation of listing reports.
 // Passcode-gated: every call needs header X-Admin-Passcode matching
-// env ADMIN_PASSCODE (default "findcng-admin" — change it, see README).
+// env ADMIN_PASSCODE. No default: when the env var is unset, no passcode
+// is accepted (fail closed — see api/_lib.js).
 //
 // Body: { action: "list_listing_reports", status?: "open"|"resolved"|"dismissed"|"all" }
 //       { action: "resolve_listing_report", id, note? }
@@ -74,6 +75,7 @@ export default async function handler(req, res) {
 
     return json(res, 400, { ok: false, error: "unknown action" });
   } catch (e) {
-    return json(res, 500, { ok: false, error: "Could not reach the database. " + String(e.message || e).slice(0, 160) });
+    console.error("admin failed:", String((e && e.message) || e).slice(0, 200));
+    return json(res, 500, { ok: false, error: "Could not reach the database. Please try again." });
   }
 }

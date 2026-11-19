@@ -7,7 +7,7 @@
 // route answers { ok: false, error: "not_open" } — the app shows
 // "Listing reports aren't open yet" instead of crashing or silently
 // dropping the report.
-import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError } from "./_lib.js";
+import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation } from "./_lib.js";
 
 const TYPES = new Set(["incorrect", "closed", "moved", "other"]);
 
@@ -29,6 +29,9 @@ export default async function handler(req, res) {
     if (!stationId || stationId.length > 40) {
       return json(res, 400, { ok: false, error: "station_id is required" });
     }
+    if (!isKnownStation(stationId)) {
+      return json(res, 400, { ok: false, error: "unknown station_id" });
+    }
     if (!TYPES.has(type)) {
       return json(res, 400, { ok: false, error: "report_type must be incorrect, closed, moved or other" });
     }
@@ -48,6 +51,7 @@ export default async function handler(req, res) {
       return json(res, 503, { ok: false, error: "not_open",
         message: "Listing reports are not open yet — the database table is still being set up." });
     }
-    return json(res, 500, { ok: false, error: "Could not save the report. " + String(e.message || e).slice(0, 160) });
+    console.error("listing-reports failed:", String((e && e.message) || e).slice(0, 200));
+    return json(res, 500, { ok: false, error: "Could not save the report. Please try again." });
   }
 }
