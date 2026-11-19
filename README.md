@@ -11,7 +11,7 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 - **Live availability reporting** — one tap, no account; reports expire after 2 hours; one-tap confirm (yes / not sure / no) and “Back to normal”
 - **Outages view** — stations drivers report as finished, right now
 - **Station detail pages** — shareable URLs (`?station=CNG-XXX`), full details in reference order, favourites, listing reports, reliability from report history
-- **NIPOST postcode location** — 6-digit and new 11-character codes, GPS, map tap
+- **NIPOST postcode location** — 6-digit and new 11-character codes, GPS, map tap; Postcode Explorer parses segments, names state/LGA from NIPOST reference data, checks validity against the NIPOST sandbox, and shows nearby stations with distances
 - **Verified-centre directory** — “check your installer” against the Pi-CNG accredited list; two distinct data-driven badges (Officially accredited, Needs re-verification)
 - **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin
 - **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, annual savings; vehicle profile remembered on the device
@@ -27,6 +27,48 @@ OpenStreetMap street — with automatic fallback to street if the satellite
 tiles fail; the CARTO dark layer was removed in 2.4 because CARTO's keyless
 dark endpoint died), Vercel serverless functions, Supabase (free tier) for reports +
 confirmations + listing reports. Running cost ~₦0/month on free tiers.
+
+## 3.1 (19 Nov 2026) — Phase 2 of the master transformation
+
+- **NIPOST integration (§6):** `api/postcode.js` v2 — sandbox/live mode
+  detection (a live key drops in via env var with zero code change),
+  reference endpoints (`states`, `lgas`, `districts`, `areas`), structured
+  error codes (timeout / invalid key / rate limited / not granted /
+  NIPOST unavailable), per-IP rate limiting, input validation. Live keys
+  are capped at L1; L2 (address autofill) is attempted only on sandbox
+  keys and falls back to L1 on `not_granted` (the current test key is
+  L1-only). L5 coordinates are never requested.
+- **Postcode Explorer v2:** segment chips name the state (full 37-state
+  table, ED = Edo confirmed from NIPOST's own reference list) and the LGA,
+  and confirm district/area codes against the reference data; validity is
+  checked against NIPOST with honest sandbox/live labelling; segment-aware
+  autocomplete (sandbox only — it spends credits on a live key per the
+  current docs); one-tap sandbox sample code; nearby-station discovery
+  with distances from verified coordinates after a 6-digit resolve or
+  GPS; reverse lookup shows the postcode at the user's spot when NIPOST
+  has one. The `valid:false` mystery is solved: the docs' format example
+  `FC 02 A09 DB 09` is not in the sandbox dataset — only NIPOST's
+  published sandbox codes (e.g. `FC-01-A01-KP-27`) resolve there.
+- **Verification (§§9–10):** every station/centre profile now has a
+  Verification card — status, source, last verification date where known;
+  unconfirmed accreditation is never shown as valid. The two suspected
+  duplicate exact-pin pairs (Lugbe, Jahi) are surfaced in the admin view
+  for Saheed's decision — not merged.
+- **Refresh fix:** `rebuild-all.py` now runs `build-data.py` as its last
+  step (step 12, with a CNG-704 cleaning canary), so the daily refresh
+  can no longer overwrite the Phase 1 name cleaning. Verified by a full
+  rebuild: byte-identical master + app data, all asserts passed.
+- **Tests:** `verify-live.py` extended with 11 postcode checks (37/37
+  pass); `scripts/verify-phase2-ui.py` drives the live explorer in
+  headless Chromium (22/22 pass, zero console errors).
+- **Live vs sandbox, honestly:** the deployed key is a test key, so real
+  building codes show as "not found in the sandbox" by design; the UI
+  says so everywhere. Live validation needs a live key (verified KYB +
+  granted access — Saheed's decision, still open). Note the docs updated
+  19 Nov 2026 state Lookup/Autocomplete consume credits with no free tier
+  stated for live keys, and no longer document the L1–L5 levels — the
+  level behaviour in this proxy is gateway-observed, and any live-key
+  cost is unconfirmed (no credit pricing published).
 
 ## 3.0 (19 Nov 2026) — Phase 1 of the master transformation
 
@@ -141,9 +183,16 @@ never need the database.
 2. Create a **test key** (`nipost_test_…`) — free, unmetered, sandbox data.
    It is enough for the showcase demo.
 3. Add it as `NIPOST_API_KEY` in Vercel and redeploy.
-4. The app only uses the **free tier**: autocomplete, nearby search, and L1
-   lookup (validity). It never requests L2+ (paid credits) or L5 coordinates
-   (restricted) — coordinates always come from GPS or a map tap.
+4. The app only requests L1 lookups on a live key (the cheapest lookup
+   the gateway offers) and gates autocomplete to sandbox mode. L2
+   (address autofill) is attempted only on sandbox keys, where test
+   calls are unmetered — and falls back to L1 when the key is not
+   granted above L1 (the current test key is L1-only). It never
+   requests L5 coordinates (restricted) — coordinates always come from
+   GPS or a map tap. NOTE (19 Nov 2026): the official docs now state
+   Lookup/Autocomplete consume credits with no free tier stated for live
+   keys, and NIPOST has published no credit pricing — so the cost of
+   live validation is unconfirmed. See PHASE-2-REPORT.md.
 
 ## How to add a station
 
@@ -245,6 +294,8 @@ base) and `NIPOST-POSTCODE-RESEARCH.md` (postcode system).
 | `sw.js` / `manifest.json` | Offline cache + installable PWA |
 | `build-data.py` | Regenerates `data/` + `sitemap.xml` from the master dataset |
 | `verify-live.py` | End-to-end live checks (zero lasting pollution) |
+| `scripts/verify-phase2-ui.py` | Drives the live Postcode Explorer in headless Chromium (needs `scripts/local-proxy.js` running — the VM egress proxy needs auth Chromium can't do) |
+| `scripts/local-proxy.js` | Test-only local CONNECT relay for headless Chromium (derives proxy auth from HTTPS_PROXY at runtime; never prints it) |
 
 ## Showcase
 

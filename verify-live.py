@@ -267,15 +267,75 @@ except Exception as e:
     check("homepage carries the Phase 1 hero", False, str(e)[:120])
 try:
     s, sw = fetch_text(BASE + "/sw.js")
-    check("sw.js cache is findcng-v3.0.0", s == 200 and "findcng-v3.0.0" in sw)
+    check("sw.js cache is findcng-v3.1.0", s == 200 and "findcng-v3.1.0" in sw)
 except Exception as e:
-    check("sw.js cache is findcng-v3.0.0", False, str(e)[:120])
+    check("sw.js cache is findcng-v3.1.0", False, str(e)[:120])
 try:
     s, sm = fetch_text(BASE + "/sitemap.xml")
     check("sitemap lists the new views",
           s == 200 and "?view=coverage" in sm and "?view=postcode" in sm, f"urls={sm.count('<url>')}")
 except Exception as e:
     check("sitemap lists the new views", False, str(e)[:120])
+
+# --- Phase 2 checks (19 Nov 2026): NIPOST postcode proxy -------------------
+# Read-only: lookups write nothing. Expectations are the SANDBOX truths
+# verified 19 Nov 2026 — the sandbox only resolves NIPOST's published
+# sample codes, and our test key is granted L1 only.
+def check_postcode():
+    s, r = call("POST", BASE + "/api/postcode", {"action": "status"})
+    check("POST /api/postcode status reports mode",
+          s == 200 and r.get("configured") is True and r.get("mode") in ("sandbox", "live"),
+          f"HTTP {s} mode={r.get('mode')}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "lookup", "code": "FC-01-A01-KP-27"})
+    res = r.get("result") or {}
+    check("sandbox sample FC-01-A01-KP-27 validates true",
+          s == 200 and res.get("valid") is True and res.get("status") == "valid",
+          f"HTTP {s} valid={res.get('valid')}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "lookup", "code": "FC 02 A09 DB 09"})
+    res = r.get("result") or {}
+    check("format example FC 02 A09 DB 09 is not_found in sandbox (expected)",
+          s == 200 and res.get("valid") is False and res.get("status") == "not_found",
+          f"HTTP {s} valid={res.get('valid')} status={res.get('status')}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "lookup", "code": "FC-01-A01-KP-27", "level": 2})
+    # L2 on the current L1-only key answers not_granted (the client falls
+    # back to L1); a future L2-granted key would return address fields.
+    # Either outcome proves the proxy handles the level honestly.
+    ok = (s == 200 and ((r.get("error") == "not_granted") or ((r.get("result") or {}).get("valid") is True)))
+    check("L2 lookup handled honestly (not_granted on L1-only key, or valid)",
+          ok, f"HTTP {s} error={r.get('error')} valid={(r.get('result') or {}).get('valid')}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "states"})
+    states = ((r.get("result") or {}).get("states") or [])
+    ed = [x for x in states if x.get("code") == "ED"]
+    check("states reference lists 37 states incl. ED=Edo",
+          s == 200 and len(states) == 37 and ed and ed[0].get("name") == "Edo",
+          f"HTTP {s} states={len(states)}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "lgas", "state": "ED"})
+    lgas = ((r.get("result") or {}).get("lgas") or [])
+    oredo = [x for x in lgas if x.get("code") == "12"]
+    check("lgas reference lists Edo LGAs incl. 12=Oredo",
+          s == 200 and len(lgas) == 18 and oredo and oredo[0].get("name") == "Oredo",
+          f"HTTP {s} lgas={len(lgas)}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "districts", "state": "FC", "lga": "01"})
+    dists = ((r.get("result") or {}).get("districts") or [])
+    check("districts reference lists FC/01 incl. A01",
+          s == 200 and any(x.get("code") == "A01" for x in dists),
+          f"HTTP {s} districts={len(dists)}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "search", "q": "F"})
+    sugg = ((r.get("result") or {}).get("suggestions") or [])
+    check("autocomplete for 'F' suggests FC",
+          s == 200 and any(x.get("code") == "FC" for x in sugg),
+          f"HTTP {s} suggestions={len(sugg)}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "reverse", "lat": 9.0579, "lng": 7.4951})
+    res = r.get("result") or {}
+    check("reverse lookup answers honestly (found:false in sandbox)",
+          s == 200 and res.get("found") is False,
+          f"HTTP {s} found={res.get('found')}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "bogus"})
+    check("unknown postcode action -> 400", s == 400, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/postcode", {"action": "lookup", "code": ""})
+    check("empty postcode code -> 400", s == 400, f"HTTP {s}")
+
+check_postcode()
 
 print()
 print("RESULT:", "ALL PASS — live APIs verified end to end" if not fails else f"{len(fails)} FAILURES: {fails}")
