@@ -24,6 +24,16 @@ const STATUSES = new Set(["available", "low", "finished", "closed"]);
 // within 2 minutes carries no new information anyway: the visible
 // state is identical, and the reporter can re-file after the window.
 const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+// Suspicious-pattern guard (Phase 3, §8): one reporter filing reports
+// for many stations in a few minutes is not a driver at a station — it
+// is a script or a prank. 6+ reports from one reporter hash in 10
+// minutes is refused. The threshold is deliberately high (a real driver
+// reports one station, maybe two), and the check is best-effort: the
+// hash is IP-based, so a flood from rotating IPs still gets through —
+// the admin availability queue (api/admin.js) is the backstop, where a
+// moderator can see the pattern and delete the rows.
+const BURST_WINDOW_MS = 10 * 60 * 1000;
+const BURST_MAX_REPORTS = 6;
 
 export default async function handler(req, res) {
   if (!supabaseConfigured) {
@@ -89,6 +99,23 @@ export default async function handler(req, res) {
       } catch (e) {
         // The dedupe check must never block a real report — log and file it.
         console.error("reports dedupe check failed:", String((e && e.message) || e).slice(0, 120));
+      }
+      // Burst guard: refuse when this reporter has already filed
+      // BURST_MAX_REPORTS in the window. A failure here must never block
+      // a real report — log and continue.
+      try {
+        const sinceBurst = new Date(Date.now() - BURST_WINDOW_MS).toISOString();
+        const burst = await sb(
+          `availability_reports?select=id&reporter_hash=eq.${encodeURIComponent(hash)}` +
+          `&reported_at=gte.${encodeURIComponent(sinceBurst)}&limit=${BURST_MAX_REPORTS + 1}`
+        );
+        if (burst && burst.length > BURST_MAX_REPORTS) {
+          console.error("reports burst guard: reporter filed", burst.length,
+            "reports in 10 min — refusing");
+          return json(res, 429, { ok: false, error: "Too many reports in a short time — please wait a few minutes." });
+        }
+      } catch (e) {
+        console.error("reports burst check failed:", String((e && e.message) || e).slice(0, 120));
       }
       const row = {
         station_id: stationId,

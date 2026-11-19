@@ -1,4 +1,7 @@
 // GET  /api/confirmations?report_id=<uuid> — vote counts for one report.
+// GET  /api/confirmations?report_ids=<uuid>,<uuid> — vote counts for up to
+//      20 reports at once (Phase 3: the confidence indicator needs counts
+//      for every fresh report on the homepage feed — one request, not N).
 // POST /api/confirmations — one-tap confirm on a live report.
 //      Body: { report_id, station_id, vote } where vote is yes | unsure | no.
 // One vote per report per reporter per day (enforced by a unique index).
@@ -15,6 +18,21 @@ export default async function handler(req, res) {
   }
   try {
     if (req.method === "GET") {
+      // Batch form (Phase 3): ?report_ids=a,b,c — counts per report id.
+      const batch = String(req.query.report_ids || "").trim();
+      if (batch) {
+        const ids = [...new Set(batch.split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+        if (!ids.length) return json(res, 400, { ok: false, error: "report_ids is required" });
+        const rows = await sb(
+          `report_confirmations?select=report_id,vote&report_id=in.(${ids.map(encodeURIComponent).join(",")})&limit=5000`
+        );
+        const counts = {};
+        ids.forEach((id) => { counts[id] = { yes: 0, unsure: 0, no: 0 }; });
+        (rows || []).forEach((r) => {
+          if (counts[r.report_id] && VOTES.has(r.vote)) counts[r.report_id][r.vote]++;
+        });
+        return json(res, 200, { configured: true, ok: true, counts });
+      }
       const reportId = String(req.query.report_id || "").trim();
       if (!reportId) return json(res, 400, { ok: false, error: "report_id is required" });
       const rows = await sb(
