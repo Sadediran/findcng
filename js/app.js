@@ -34,6 +34,7 @@
   let baseLayers = null;        // { satellite, street } tile layers for the main map
   let mapLayer = "satellite";   // current base layer kind; persisted as findcng_maplayer
   let tileFallbackArmed = true; // false once a tile-failure fallback has fired (re-armed by a manual switch)
+  const APP_VERSION = "3.3.11"; // shown under the map; bump with the SW cache name on every release
   let currentStation = null;    // id open in the detail view
   let prevView = "map";
   let reportStatus = null;      // status picked in the report sheet
@@ -2902,6 +2903,11 @@
   // ---------------- wiring ----------------
   function init() {
     try { initMap(); } catch (e) { mapFallback("Something went wrong loading the map. The rest of the app still works."); }
+    // Version label under the map (19 Nov 2026): a tab left open keeps
+    // the old release, so the version in a screenshot tells us at once
+    // whether a bug report comes from current code or a stale shell.
+    const av = $("app-version");
+    if (av) av.textContent = "FindCNG v" + APP_VERSION + " · Map tiles: Esri / OpenStreetMap";
     initSafetyLang();
     $("postcode-go").addEventListener("click", postcodeGo);
     $("postcode-input").addEventListener("keydown", (e) => { if (e.key === "Enter") postcodeGo(); });
@@ -3133,6 +3139,14 @@
         // back-forward cache is not a navigation, so the browser would
         // otherwise not check for a new worker until the next visit.
         if (reg) reg.update().catch(function () {});
+        // And re-check hourly: a tab left open for days otherwise keeps
+        // the old release indefinitely (19 Nov 2026 — Saheed's tab sat
+        // through four map-fix deploys without picking any of them up).
+        // The controllerchange reload above only fires when an update
+        // actually lands, so this costs one cheap HEAD-ish check an hour.
+        if (reg) setInterval(function () {
+          try { reg.update().catch(function () {}); } catch (e) { /* ignore */ }
+        }, 60 * 60 * 1000);
       }).catch(function () {});
     }
     // Load data after first paint
