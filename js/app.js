@@ -34,7 +34,8 @@
   let baseLayers = null;        // { satellite, street } tile layers for the main map
   let mapLayer = "satellite";   // current base layer kind; persisted as findcng_maplayer
   let tileFallbackArmed = true; // false once a tile-failure fallback has fired (re-armed by a manual switch)
-  const APP_VERSION = "3.3.11"; // shown under the map; bump with the SW cache name on every release
+  let streetViaProxy = false; // street layer currently loading via /api/tiles
+  const APP_VERSION = "3.3.12"; // shown under the map; bump with the SW cache name on every release
   let currentStation = null;    // id open in the detail view
   let prevView = "map";
   let reportStatus = null;      // status picked in the report sheet
@@ -895,6 +896,14 @@
       label: "Street",
     },
   };
+  // Same-origin tile proxy (19 Nov 2026): some networks can't reach the
+  // tile CDNs directly at all (on Saheed's 4G, Esri hangs and OSM fails
+  // outright), while findcng.vercel.app itself loads fine — so when the
+  // street layer's direct tiles fail, the map retries through /api/tiles
+  // (OSM only; Esri's terms don't allow re-serving). Once the proxy has
+  // worked, the choice is remembered so later visits start on it.
+  const TILE_PROXY_URL = "/api/tiles?provider=osm&z={z}&x={x}&y={y}";
+  const TILE_PROXY_KEY = "findcng_tileproxy";
   const MAP_LAYER_KEY = "findcng_maplayer";
   function storedMapLayer() {
     try {
@@ -909,7 +918,12 @@
   // Fresh layer instance per map (one L.tileLayer cannot live on two maps).
   function createBaseLayer(kind) {
     const def = MAP_LAYERS[kind] || MAP_LAYERS.street;
-    return L.tileLayer(def.url, { maxZoom: 19, attribution: def.attribution });
+    let url = def.url;
+    if (kind === "street") {
+      try { streetViaProxy = localStorage.getItem(TILE_PROXY_KEY) === "1"; } catch { streetViaProxy = false; }
+      if (streetViaProxy) url = TILE_PROXY_URL;
+    }
+    return L.tileLayer(url, { maxZoom: 19, attribution: def.attribution });
   }
   function updateLayerSwitcher() {
     document.querySelectorAll("[data-map-layer]").forEach((b) => {
@@ -950,6 +964,23 @@
   const tileRetried = new Set(); // tile URLs already retried once
   let streetFailArmed = true; // false once the street-failure message shows
   let mapErrorLoadedAt = 0; // total tiles loaded when the message appeared
+  // Counted-failure timestamps per layer (module scope, not a closure, so
+  // switching the street layer to the proxy can reset its window — old
+  // direct failures must not combine with new proxy failures).
+  const tileErrorWindows = { satellite: [], street: [] };
+  function resetTileErrors(kind) { tileErrorWindows[kind] = []; }
+  // Street direct tiles failed: retry through the same-origin proxy
+  // instead of giving up. Returns false when already on the proxy.
+  function switchStreetToProxy() {
+    if (!map || !baseLayers || !baseLayers.street) return false;
+    if (streetViaProxy) return false;
+    streetViaProxy = true;
+    resetTileErrors("street");
+    streetFailArmed = true;
+    baseLayers.street.setUrl(TILE_PROXY_URL);
+    toast("Street map isn't loading directly — trying via FindCNG.");
+    return true;
+  }
   function mapErrorEl() {
     let el = $("map-error");
     if (el) return el;
@@ -980,12 +1011,16 @@
     const el = $("map-error");
     if (!el || el.classList.contains("hidden")) return;
     const s = tileStats.satellite, t = tileStats.street;
+    const route = streetViaProxy ? " (via FindCNG)" : "";
     el.querySelector(".map-error-detail").textContent =
-      `Satellite: ${s.loaded} loaded · ${s.failed} failed. Street: ${t.loaded} loaded · ${t.failed} failed.`;
+      `Satellite: ${s.loaded} loaded · ${s.failed} failed. Street${route}: ${t.loaded} loaded · ${t.failed} failed.`;
   }
   function showMapError() {
     if (!streetFailArmed) return;
     streetFailArmed = false;
+    // The proxy failed too: forget the remembered proxy route so the
+    // next visit tries direct first again (networks change).
+    try { localStorage.removeItem(TILE_PROXY_KEY); } catch { /* ignore */ }
     hideMapLoading();
     const el = mapErrorEl();
     if (!el) return;
@@ -1001,12 +1036,16 @@
   }
   // Tile-failure fallback: 3+ post-retry tile errors within 10 seconds
   // on the satellite layer means the provider is failing, not one bad
-  // tile — switch to the street layer. On street, show the error
-  // message instead (no third provider exists).
+  // tile — switch to the street layer. On street, retry through the
+  // same-origin proxy first; only if that fails too, show the error
+  // message (no third direct provider exists).
   function watchTileErrors(layer, kind) {
-    let errors = [];
     layer.on("tileload", () => {
       tileStats[kind].loaded++;
+      // A proxied tile loaded: remember the proxy route for next time.
+      if (kind === "street" && streetViaProxy) {
+        try { localStorage.setItem(TILE_PROXY_KEY, "1"); } catch { /* ignore */ }
+      }
       refreshMapErrorDetail();
       // Genuine recovery clears the message: 3+ tiles loaded since it
       // appeared (1–2 stragglers from the failed batch do not).
@@ -1041,11 +1080,12 @@
       const armed = kind === "satellite" ? tileFallbackArmed : streetFailArmed;
       if (!armed) return;
       const now = Date.now();
-      errors = errors.filter((t) => now - t < 10000);
-      errors.push(now);
-      if (errors.length >= 3) {
+      const window = tileErrorWindows[kind].filter((t) => now - t < 10000);
+      window.push(now);
+      tileErrorWindows[kind] = window;
+      if (window.length >= 3) {
         if (kind === "satellite") setMapLayer("street", { fallbackFrom: kind });
-        else showMapError();
+        else if (!switchStreetToProxy()) showMapError();
       }
     });
   }
@@ -1109,7 +1149,7 @@
       } else {
         tileSlowTimer = setTimeout(() => {
           if (!streetFailArmed || mapLayer !== "street" || !map || !map.hasLayer(layer)) return;
-          showMapError();
+          if (!switchStreetToProxy()) showMapError();
         }, 15000);
       }
     });
