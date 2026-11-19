@@ -14,10 +14,13 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 - **Station detail pages** — shareable URLs (`?station=CNG-XXX`), full details in reference order, favourites, listing reports, reliability from report history
 - **NIPOST postcode location** — 6-digit and new 11-character codes, GPS, map tap; Postcode Explorer parses segments, names state/LGA from NIPOST reference data, checks validity against the NIPOST sandbox, and shows nearby stations with distances
 - **Verified-centre directory** — “check your installer” against the Pi-CNG accredited list; two distinct data-driven badges (Officially accredited, Needs re-verification)
-- **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin
+- **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin + Hausa + Yoruba + Igbo (the three new translations are marked as awaiting native-speaker review)
 - **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, daily/monthly/annual savings; editable CNG-use estimate (km per SCM); copy or download the summary as a .txt file; vehicle profile remembered on the device
 - **News page** — dated programme updates, each with its original source
 - **Ask about CNG** — AI chat (Gemini free tier, OpenRouter free backup — verified working 19 Nov 2026) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports, web search, and read-only lookups of named stations in the directory (missing fields answered “Information unavailable”, never invented); no sources shown; no chat logs stored
+- **Operator portal** — centre registration, station ownership claims, update requests, availability updates and responses to user reports — every submission lands in the admin moderation queue; nothing publishes or is marked “Operator confirmed” until an admin approves that exact submission (claims require a business documentation reference + phone confirmation; verification is a manual admin checklist — there is no automatic verification). Needs `sql/003_operator_portal.sql` in Supabase before submissions are accepted (see below); until then the portal shows an honest “not open yet”.
+- **Admin dashboard** (`/admin.html`) — role-based (Super admin / Data admin / Verifier passcodes): overview with live counts, listing reports, availability moderation, operator verification queue, audit log, data quality (incl. duplicate detection and accreditation review) and postcode monitoring. Nothing auto-publishes as verified without admin approval.
+- **Offline directory** — cached station + centre info and offline search; when the browser reports offline, live availability is withdrawn everywhere at once (never presented as current) and syncs again on reconnect
 - **Privacy page** — retention periods, removal requests (contact TBD)
 - **Official-source directory** — listings come from government and agency sources (the Pi-CNG registers and other public lists); centres do not register themselves
 
@@ -28,6 +31,118 @@ OpenStreetMap street — with automatic fallback to street if the satellite
 tiles fail; the CARTO dark layer was removed in 2.4 because CARTO's keyless
 dark endpoint died), Vercel serverless functions, Supabase (free tier) for reports +
 confirmations + listing reports. Running cost ~₦0/month on free tiers.
+
+## 3.3 (19 Nov 2026) — Phase 4 of the master transformation (§22: Ecosystem expansion)
+
+- **Operator portal (§15):** new `api/operator.js` + an Operator view in
+  the app (More menu, and “Claim this station” / “Request an update”
+  buttons on station detail pages). Five submission types — register,
+  claim, update, availability, response — all validated server-side
+  (unknown station → 400, claim without a ≥10-char business
+  documentation reference → 400, claim/update/availability/response
+  without a phone or email → 400, bad state/status/details → 400),
+  rate-limited (10 POSTs/min/IP, best-effort through proxies) and
+  deduped (10-min window per type+station). Nothing publishes on
+  submission: register/claim/update sit in the moderation queue;
+  availability publishes a live report only when an admin approves it
+  (that report carries `source: "operator"` and shows “Operator
+  confirmed”); responses are moderator-facing only. Submitters get a
+  reference and can check status from the portal (`GET
+  /api/operator?id=` returns public fields only — never phone/email).
+  Approved claims publish `claimed: true` + business name
+  (`GET /api/operator?station=CNG-XXX`), which the directory shows as
+  an “Operator-verified listing” badge. Needs
+  `sql/003_operator_portal.sql` (see Supabase setup below); until it is
+  run, submissions answer an honest 503 `not_open` and the portal says
+  so — **as of this release sql/003 has NOT been run** (no DDL route
+  exists from this VM), so the end-to-end flow could not be verified
+  live; `verify-live.py` detects the state and tests the matching
+  behaviour, and re-running it after sql/003 exercises the full
+  register → queue → approve → published-state flow.
+- **Admin dashboard (§16):** `admin.html` rebuilt as a tabbed
+  dashboard (Overview, Listing reports, Availability, Operator queue,
+  Audit log, Data quality, Postcode) with its logic in `js/admin.js`
+  (no inline script — CSP). Overview tiles are live counts from the
+  database/directory, labelled as such. Data quality shows real counts
+  (721 / 509 / 95 exact / 18 phones), the duplicate-detection view
+  (48 groups, 2 exact-pin pairs — CNG-282/430 Lugbe and CNG-387/428
+  Jahi — surfaced, never merged), and accreditation review (36 stale
+  2024, 9 single-source). Postcode monitoring shows mode + key status
+  without ever returning the key. **Role-based access via role-scoped
+  passcodes** (`ADMIN_PASSCODE` = Super admin, `DATA_ADMIN_PASSCODE` =
+  Data admin, `VERIFIER_PASSCODE` = Verifier — all fail closed when
+  unset; Supabase Auth was out of reach in this run, so it was not
+  attempted): the permission matrix is enforced server-side in
+  `api/admin.js` (Super: everything; Data admin: listing reports +
+  availability moderation + data quality/duplicates, read-only operator
+  queue + audit; Verifier: operator review + accreditation review +
+  availability moderation, read-only listing reports) and mirrored in
+  the UI (buttons hidden per role; a verifier opening a listing report
+  sees a read-only note). Operator approval has a manual verification
+  checklist (documentation reference checked + confirmed by phone) for
+  claims. Every admin action is written to `audit_log` (needs sql/003;
+  until then the Audit tab says “not open yet”). The Phase 3 cosmetic
+  issue was investigated and closed: the admin availability list never
+  had a `created_at` field — `reported_at` is the timestamp and is
+  always populated. Content editor and support administrator roles are
+  documented as pending (no content-editing or support-ticket surface
+  exists in this stack).
+- **Multilingual safety hub (§17):** Hausa, Yoruba and Igbo added for
+  the safety hub's core content (`js/safety-i18n.js` — 5 keys per
+  language, 4 causes, 4 myth cards, 6 checklist items), with a visible
+  banner on every translated view: “This translation was produced
+  in-session and is awaiting review by a native speaker before it is
+  presented as final.” English + Pidgin unchanged; the incidents table
+  stays English. The translations are never presented as professionally
+  verified.
+- **News (§18):** verified against the brief (Nigerian CNG policy, new
+  stations, infrastructure, accreditation, industry, safety; dates +
+  original sources shown; nothing auto-generated presented as verified
+  fact) and the seed deduped — `data/news-seed.json` is now the single
+  source of truth (9 items); `js/news.js` no longer inlines a copy.
+- **Performance, security, reliability (§19):** the deferred CSP is
+  live for real — all 38 inline `onclick` handlers + 1 `onerror`
+  converted to data attributes + one document-level delegated listener;
+  `script-src 'self'` with NO `'unsafe-inline'` (`style-src` keeps
+  `'unsafe-inline'` because Leaflet sets inline styles). Same-origin
+  checks on all public POST routes (foreign Origin → 403); rate
+  limiting on all write APIs; audit logging (see §16); Supabase RLS
+  reviewed (no public policies — the anon key can do nothing). Privacy
+  page now discloses operator-portal contact collection + retention for
+  operator submissions and the audit log; the support contact is still
+  TBD and nothing was invented. Accessibility: skip-to-content link
+  added. Admin page gained the data-URI favicon (it was 404ing) and a
+  “Loading live counts…” placeholder while analytics loads.
+- **Offline (§20):** when the browser reports offline, live
+  availability is withdrawn everywhere at once — the home feed, station
+  detail pages and the outages view all show “You are offline — live
+  reports need a connection” instead of any cached report; an offline
+  banner appears and the app auto-syncs on reconnect. The saved station
+  directory and safety hub keep working offline. Cached availability is
+  never presented as current.
+- **Bugs found by live testing and fixed in this release:** (1) the
+  PostgREST missing-column error is code **42703**, not PGRST204 — the
+  `source` fallback in `api/reports.js`/`api/admin.js` had 500'd the
+  reports feed until sql/003 is run; (2) the operator station search
+  only matched single words (“NIPCO Benin” found nothing) — it now
+  matches multi-word queries across name/city/state/address; (3) the
+  outages view listed the last known state when reports were
+  unreachable — it now shows nothing stale; (4) the admin overview
+  rendered an empty panel while analytics loaded (now a loading
+  placeholder) and the admin page 404'd on `/favicon.ico`.
+- **Tests:** `verify-live.py` extended with 38 Phase 4 checks (98/98
+  pass, incl. RBAC whoami ×3 roles + 401s, permission-matrix 403s,
+  operator validation 400s, same-origin 403s, `not_open` behaviour,
+  CSP header presence, no inline handlers in the served HTML);
+  `scripts/verify-phase4-ui.py` drives the live site in headless
+  Chromium, mobile 390 px + desktop 1280 px (47 checks, all pass, zero
+  JS errors from app code, zero CSP violations) — operator portal,
+  safety languages, role-gated admin dashboard (all three roles),
+  offline behaviour, and the §23 regression subset (home, calculator
+  ₦266,382/month, postcode sandbox sample, intelligence). Every test
+  row created was deleted by id afterwards; Saheed's 3 real reports
+  (CNG-018, CNG-021, CNG-009) and the older CNG-156 history row were
+  re-verified intact after every test run.
 
 ## 3.2 (19 Nov 2026) — Phase 3 of the master transformation (§22: Intelligence and reliability)
 
@@ -226,7 +341,9 @@ build step. First deploy creates the project; later deploys update it.
 | `NIPOST_API_KEY` | For official postcode lookup | NIPOST developer key (`nipost_test_…` for the sandbox, `nipost_live_…` for live). Without it, postcode lookup falls back to the built-in 6-digit table + GPS + map tap. |
 | `NIPOST_API_BASE` | Optional | Override for testing — e.g. `https://ng-postcode.oliha.dev` (unofficial mock with the same paths). Default: `https://api.postcode.gov.ng`. |
 | `GEMINI_API_KEY` | For AI chat answers | Free Google AI Studio key (aistudio.google.com — no card, free tier only). Without it, `/api/chat` answers `{ configured: false }` and the app shows “AI answers are being set up”. The key is server-side only, used only for the `gemini-2.5-flash` model, and no chat logs are stored. |
-| `ADMIN_PASSCODE` | Set in Vercel (Production, secret) + `.env.local` | Moderator passcode for `/admin.html`. A strong passcode was generated at deploy time (18 Nov 2026) and stored in Vercel + `.env.local` — never commit it. To change it, update the Vercel env var and `.env.local`, then redeploy. |
+| `ADMIN_PASSCODE` | Set in Vercel (Production, secret) + `.env.local` | Super admin passcode for `/admin.html`. A strong passcode was generated at deploy time (18 Nov 2026) and stored in Vercel + `.env.local` — never commit it. To change it, update the Vercel env var and `.env.local`, then redeploy. |
+| `DATA_ADMIN_PASSCODE` | Set in Vercel (Production, secret) + `.env.local` | Data admin passcode for `/admin.html` (Phase 4). Generated 19 Nov 2026, stored in Vercel + `.env.local` — never commit it. Without it, the data admin role cannot sign in (fail closed). |
+| `VERIFIER_PASSCODE` | Set in Vercel (Production, secret) + `.env.local` | Verifier passcode for `/admin.html` (Phase 4). Generated 19 Nov 2026, stored in Vercel + `.env.local` — never commit it. Without it, the verifier role cannot sign in (fail closed). |
 
 **Without Supabase configured**, the app shows an honest error for reports
 (“couldn't reach the server — try again”) and saves nothing
@@ -249,6 +366,17 @@ never need the database.
    features need. Until it is run, `/api/listing-reports` and
    `/api/confirmations` answer `{ ok: false, error: "not_open" }` and the app
    shows “not open yet” — nothing crashes and nothing is silently lost.
+3b. Dashboard → SQL Editor → New query → paste
+   `sql/003_operator_portal.sql` → Run. This creates the
+   `operator_submissions` and `audit_log` tables and adds the `source`
+   column to `availability_reports` — the Phase 4 operator portal and
+   audit log need it. Until it is run, operator submissions answer an
+   honest 503 `not_open`, the operator queue and audit log tabs say
+   “not open yet”, and reports have no `source` field (the APIs degrade
+   gracefully — nothing crashes). **As of 19 Nov 2026 this step has NOT
+   been run** — it is a 2-minute step in the Supabase SQL editor, then
+   re-run `python3 verify-live.py` to exercise the full operator
+   end-to-end flow.
 4. Dashboard → Settings → API → copy the **Project URL** and the
    **`service_role` secret key** into the Vercel env vars above. (The `anon`
    key is also listed there; copy it too for completeness.)
@@ -293,14 +421,31 @@ re-check before any demo. Then redeploy.
 
 ## How to moderate (ED/26B/2316)
 
-1. Open `<site>/admin.html`, enter the moderator passcode. (There is no link
-   to the moderator page anywhere in the app — it is reachable only by direct
-   URL.)
-2. Open listing reports show first. Open one, check the listing, then:
+1. Open `<site>/admin.html`, enter your role passcode (Super admin /
+   Data admin / Verifier — each passcode signs you in as that role).
+   (There is no link to the moderator page anywhere in the app — it is
+   reachable only by direct URL.)
+2. **Overview** shows live counts from the database and the directory.
+3. **Listing reports:** open one, check the listing, then:
    - **Fix the listing** in the master dataset, re-run `build-data.py`, and
      redeploy — resolving a report here only closes the report.
    - **Resolve** with a note, or **Dismiss** with a reason if the report is
-     wrong or abusive.
+     wrong or abusive. (Verifiers can read listing reports but not
+     resolve or dismiss them.)
+4. **Operator queue:** open a submission, check the business
+   documentation reference, and for claims confirm by phone before
+   approving — tick the verification checklist in the sheet. Approving
+   an availability update publishes it as an “Operator confirmed”
+   report; approving a claim marks the listing operator-verified.
+   Rejecting publishes nothing. Nothing is ever approved automatically.
+5. **Availability** shows recent history (burst flags at 5+/hour) with
+   per-row delete for abusive rows. Saheed's own reports (CNG-018,
+   CNG-021, CNG-009, 19 Nov) are real — do not delete them.
+6. **Audit log** records who did what and when (needs sql/003).
+   **Data quality** surfaces duplicate candidates (never merge without
+   Saheed's decision) and centres needing re-verification.
+   **Postcode** shows the NIPOST mode and key status (the key itself is
+   never shown).
 
 ## How it works
 
