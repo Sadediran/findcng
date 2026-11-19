@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.7"; // bumped 19 Nov 2026 — WhatsApp share text fix: append only the city/state parts the address doesn't already end with (was "Lagos, Lagos, Lagos" on CNG-019)
+const CACHE = "findcng-v2.4.8"; // bumped 19 Nov 2026 — Stations/Centres split: Stations tab shows refuelling + both only (134), Centres tab conversion + both only (617+live); type chips removed from Stations; per-tab state counts
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

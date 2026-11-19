@@ -318,7 +318,11 @@
       : liveState === "unavailable"
         ? "Live register could not be reached — showing the stored list from the last daily update."
         : "Checking the live Pi-CNG register for newly listed centres…";
-    ["live-note", "live-note-centres"].forEach((id) => {
+    // 19 Nov 2026: the live note lives on the Centres tab only — live
+    // entries are conversion centres, and the Stations tab no longer
+    // shows centres at all. (The old "live-note" element is gone from
+    // the Stations view.)
+    ["live-note-centres"].forEach((id) => {
       const el = $(id);
       if (el) el.textContent = text;
     });
@@ -351,7 +355,7 @@
       `<div class="hero-stat"><b>${stats.states_with_data} / 37</b><span>states + FCT</span></div>` +
       `<div class="hero-stat"><b>${onMapCount().toLocaleString()}</b><span>on the map</span></div>`;
     const lede = $("stations-lede");
-    if (lede) lede.textContent = `Every CNG refuelling station and conversion centre in the dataset — ${stats.total_records} entries across ${stats.states_with_data} states. Search by name, town or operator.`;
+    if (lede) lede.textContent = `Every CNG refuelling station in the dataset — ${stats.refuelling_locations} stations. Conversion centres live under the Centres tab.`;
     const nodata = $("nodata-note");
     if (nodata) {
       nodata.textContent = stats.no_data_states.length
@@ -741,24 +745,32 @@
 
   // ---------------- station list ----------------
   function populateStateFilters() {
-    const all = allStations();
-    const states = [...new Set(all.map((s) => s.state))].sort();
-    ["state-filter", "centre-state-filter"].forEach((id) => {
+    // 19 Nov 2026: each tab's dropdown counts only what the tab shows —
+    // Stations counts refuelling + both, Centres counts conversion + both.
+    const scopes = {
+      "state-filter": allStations().filter((s) => s.type !== "conversion"),
+      "centre-state-filter": allStations().filter((s) => s.type !== "refuelling"),
+    };
+    Object.entries(scopes).forEach(([id, list]) => {
       const sel = $(id);
       if (!sel) return;
+      const states = [...new Set(list.map((s) => s.state))].sort();
       const cur = sel.value;
       sel.innerHTML = `<option value="">All states (${states.length})</option>` +
-        states.map((s) => `<option value="${esc(s)}">${esc(s)} (${all.filter((x) => x.state === s).length})</option>`).join("");
+        states.map((s) => `<option value="${esc(s)}">${esc(s)} (${list.filter((x) => x.state === s).length})</option>`).join("");
       sel.value = cur;
     });
   }
   function filteredStations() {
     const q = ($("station-search").value || "").trim().toLowerCase();
     const st = $("state-filter").value;
-    const ty = document.querySelector(".chip[data-type].on")?.dataset.type || "";
     let list = allStations().filter((s) => {
+      // Stations tab shows refuelling stations only (19 Nov 2026):
+      // conversion centres live under the Centres tab. "Both" entries
+      // sell gas, so they stay. (The old type chips are gone — the tab
+      // itself is the filter now.)
+      if (s.type === "conversion") return false;
       if (st && s.state !== st) return false;
-      if (ty && s.type !== ty) return false;
       if (sortMode === "favs" && !favs.has(s.id)) return false;
       if (q) {
         const hay = `${s.name} ${s.address || ""} ${s.city || ""} ${s.state} ${s.operator || ""}`.toLowerCase();
@@ -821,21 +833,22 @@
     if (!dataLoaded) return;
     const list = filteredStations();
     const box = $("station-results");
-    $("station-count").textContent = list.length + " of " + allStations().length + " entries" +
+    const stationTotal = allStations().filter((s) => s.type !== "conversion").length;
+    $("station-count").textContent = list.length + " of " + stationTotal + " refuelling stations" +
       (sortMode === "favs" ? " · your favourites" : userLoc ? " · sorted by distance from your spot" : " · set your location to sort by distance");
     // State landing summary — genuinely useful content for ?state= pages.
+    // Stations only (19 Nov 2026): conversion centres are counted on
+    // the Centres tab, not here.
     let summaryHtml = "";
     const st = $("state-filter").value;
     if (st) {
-      const inState = stations.filter((s) => s.state === st);
-      const ref = inState.filter((s) => s.type !== "conversion").length;
-      const conv = inState.filter((s) => s.type !== "refuelling").length;
+      const inState = stations.filter((s) => s.state === st && s.type !== "conversion");
       const mapped = inState.filter((s) => s.lat).length;
-      const acc = inState.filter((s) => s.acc).length;
+      const refReg = inState.filter((s) => s.refReg).length;
       const stale = inState.filter((s) => s.confidence === "stale-2024-list").length;
       summaryHtml = `<div class="card"><h3 style="margin-top:0">CNG in ${esc(st)}</h3>` +
-        `<p style="margin:0"><b>${inState.length}</b> entries: <b>${ref}</b> refuelling location(s), <b>${conv}</b> conversion centre(s). ` +
-        `<b>${mapped}</b> on the map · <b>${acc}</b> officially accredited` +
+        `<p style="margin:0"><b>${inState.length}</b> refuelling location(s). ` +
+        `<b>${mapped}</b> on the map · <b>${refReg}</b> on the Pi-CNG refuelling register` +
         (stale ? ` · <b>${stale}</b> need re-verification` : "") + `.</p>` +
         `<p class="small" style="margin-bottom:0">Share this page: <b>${esc(location.origin + location.pathname + "?state=" + encodeURIComponent(st))}</b></p></div>`;
     }
@@ -1465,13 +1478,6 @@
     // Stations list
     $("station-search").addEventListener("input", () => { listShown = 50; renderStations(); });
     $("state-filter").addEventListener("change", () => { listShown = 50; renderStations(); });
-    document.querySelectorAll(".chip[data-type]").forEach((c) =>
-      c.addEventListener("click", () => {
-        const wasOn = c.classList.contains("on");
-        document.querySelectorAll(".chip[data-type]").forEach((x) => x.classList.remove("on"));
-        if (!wasOn) c.classList.add("on");
-        listShown = 50; renderStations();
-      }));
     document.querySelectorAll(".chip[data-sort]").forEach((c) =>
       c.addEventListener("click", () => {
         document.querySelectorAll(".chip[data-sort]").forEach((x) => x.classList.remove("on"));

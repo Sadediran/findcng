@@ -141,20 +141,14 @@
 
 <!-- ============ STATIONS ============ -->
 <section id="view-stations" class="view">
-  <h2>All stations &amp; centres</h2>
-  <p class="lede" id="stations-lede">Every CNG refuelling station and conversion centre in the dataset. Search by name, town or operator.</p>
-  <p class="tiny" id="live-note"></p>
+  <h2>Refuelling stations</h2>
+  <p class="lede" id="stations-lede">Every CNG refuelling station in the dataset. Conversion centres live under the Centres tab.</p>
   <div class="field">
-    <input type="text" id="station-search" placeholder="Search — e.g. NIPCO Benin, Fonnd, Kano" aria-label="Search stations">
+    <input type="text" id="station-search" placeholder="Search — e.g. NIPCO Benin, BOVAS, Kano" aria-label="Search stations">
   </div>
   <div class="field">
     <label for="state-filter">State</label>
     <select id="state-filter"><option value="">All states</option></select>
-  </div>
-  <div class="chips" role="group" aria-label="Filter by type">
-    <button class="chip" data-type="refuelling">⛽ Refuelling</button>
-    <button class="chip" data-type="conversion">🔧 Conversion</button>
-    <button class="chip" data-type="both">⛽🔧 Both</button>
   </div>
   <div class="chips" role="group" aria-label="Sort stations">
     <button class="chip on" data-sort="nearest">📍 Nearest</button>
