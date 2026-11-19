@@ -7,7 +7,7 @@ reports with graceful not_open, stats/sitemap/robots).
 NOTE (2.5, 18 Nov 2026): the centre-submission checks (POST /api/submissions,
 admin submission list, certificate signed URL, GET /api/centres live counts)
 were removed with centre self-registration."""
-import json, os, sys, time, urllib.request, urllib.error
+import json, os, subprocess, sys, time, urllib.request, urllib.error
 
 BASE = "https://findcng.vercel.app"
 ENV = {}
@@ -41,7 +41,25 @@ def call(method, url, body=None, headers=None):
             # Transient egress/proxy drops (RemoteDisconnected etc.) — retry.
             last = (0, {"error": str(e)[:120]})
             time.sleep(2 * (attempt + 1))
-    return last
+    # urllib's chunked reads through the egress proxy truncate
+    # intermittently on larger responses (IncompleteRead — /api/news
+    # failed 3/3 attempts on 19 Nov 2026) while curl delivers the same
+    # URL cleanly in both plain and gzip modes. One curl attempt as a
+    # fallback before giving up, so a proxy quirk can't fail a healthy
+    # endpoint.
+    try:
+        cmd = ["curl", "-s", "-w", "\n%{http_code}", "-X", method, url,
+               "-H", "Content-Type: application/json", "--max-time", "30"]
+        for k, v in (headers or {}).items():
+            cmd += ["-H", f"{k}: {v}"]
+        if data is not None:
+            cmd += ["--data-binary", "@-"]
+        p = subprocess.run(cmd, input=data, capture_output=True, timeout=40)
+        out = p.stdout.decode("utf-8", "replace")
+        *body_lines, code = out.rsplit("\n", 1)
+        return int(code), json.loads("".join(body_lines) or "{}")
+    except Exception:
+        return last
 
 fails = []
 def check(name, cond, detail=""):
