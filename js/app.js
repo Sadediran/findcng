@@ -1010,13 +1010,15 @@
       }
     });
     layer.on("tileerror", (e) => {
-      const armed = kind === "satellite" ? tileFallbackArmed : streetFailArmed;
-      if (!armed || mapLayer !== kind || !map || !map.hasLayer(layer)) return;
+      if (mapLayer !== kind || !map || !map.hasLayer(layer)) return;
       const tile = e && e.tile;
       const url = tile ? tile.src : "";
       // One free retry per tile: flaky data drops single tiles that load
       // fine a second later. A retry URL (or an already-retried one)
       // failing again is a real failure and counts toward the fallback.
+      // Retries and stats run even after the fallback disarms — recovery
+      // is always good, and the counts in the error message must reflect
+      // every failure, not just the three that triggered it.
       if (url && !url.includes("retry=1") && !tileRetried.has(url)) {
         tileRetried.add(url);
         if (tileRetried.size > 500) tileRetried.clear();
@@ -1028,6 +1030,8 @@
         return;
       }
       tileStats[kind].failed++;
+      const armed = kind === "satellite" ? tileFallbackArmed : streetFailArmed;
+      if (!armed) return;
       const now = Date.now();
       errors = errors.filter((t) => now - t < 10000);
       errors.push(now);
