@@ -1,11 +1,15 @@
-/* FindCNG Nigeria — "Ask about CNG" chat.
+/* FindCNG Nigeria — "Ask anything" chat.
+   A general assistant, like Gemini, with expert FindCNG/CNG knowledge —
+   not CNG-only (Saheed, 19 Nov 2026).
    Self-initializing: wires the #view-chat section, probes /api/chat once
    (the first time the view opens) to learn whether the AI key is set, and
    renders plain answers. No sources are shown anywhere in the chat
    (Saheed, 18 Nov 2026: the links were link spam, and the web search
    sometimes surfaced junk like login pages).
-   No chat history is stored anywhere — messages live only in this page's
-   memory and disappear on reload. */
+   Conversation memory: the recent exchanges are kept in this page's
+   memory and sent with each question, so follow-ups ("retry that",
+   "what about...?") work. Nothing is stored anywhere — messages live
+   only in this page's memory and disappear on reload. */
 (function () {
   "use strict";
   var MAX_LEN = 500;
@@ -25,6 +29,10 @@
   }
 
   var log, input, sendBtn, countEl, boxEl, setupEl, probed = false, busy = false;
+  // Conversation memory (page only, never stored): the last exchanges,
+  // sent with each question so the AI can answer follow-ups. The current
+  // question is never in the history sent — the API appends it itself.
+  var history = [];
 
   function scrollLog() {
     if (log) log.scrollTop = log.scrollHeight;
@@ -88,12 +96,16 @@
   function ask(question) {
     if (busy || !question) return;
     addUserBubble(question);
+    // History as it stood BEFORE this question (last 6 exchanges); the
+    // current question rides in the `question` field, not the history.
+    var past = history.slice(-12);
+    history.push({ role: "user", text: question });
     setBusy(true);
     var typing = addTyping();
     fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: question }),
+      body: JSON.stringify({ question: question, history: past }),
     })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
       .then(function (r) {
@@ -104,6 +116,7 @@
           return;
         }
         if (r.status === 200 && b.ok && b.answer) {
+          history.push({ role: "model", text: b.answer });
           addAnswerBubble(b.answer);
         } else {
           addErrorBubble(b.error || "Something went wrong — please try again.");

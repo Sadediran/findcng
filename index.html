@@ -133,7 +133,7 @@
       <button class="chip" onclick="showView('outages')">🔴 Out of gas</button>
       <button class="chip" onclick="showView('calculator')">🧮 Savings calculator</button>
       <button class="chip" onclick="showView('news')">📰 CNG news</button>
-      <button class="chip" onclick="showView('chat')">💬 Ask about CNG</button>
+      <button class="chip" onclick="showView('chat')">💬 Ask anything</button>
       <button class="chip" onclick="showView('centres')">🔧 Check an installer</button>
     </div>
   </div>
@@ -330,8 +330,8 @@
 
 <!-- ============ ASK ABOUT CNG ============ -->
 <section id="view-chat" class="view">
-  <h2>Ask about CNG</h2>
-  <p class="lede">Ask anything about CNG — safety, prices, conversion, where to find gas — and get a plain answer. No account needed.</p>
+  <h2>Ask anything</h2>
+  <p class="lede">Ask anything — CNG, the FindCNG app, or anything else — and get a plain answer. No account needed.</p>
   <div id="chat-setup" class="card warnbox hidden">
     <h3 style="margin-top:0">AI answers are being set up</h3>
     <p style="margin:0">The chat answers are being set up — check back soon. In the meantime, the <a href="#" onclick="showView('safety');return false;">Safety hub</a> and <a href="#" onclick="showView('help');return false;">Help &amp; FAQ</a> answer the most common questions.</p>
@@ -339,7 +339,7 @@
   <div id="chat-box">
     <div class="card chat-card">
       <div id="chat-log" aria-live="polite">
-        <div class="chat-msg ai"><p>Hello! Ask me anything about CNG in Nigeria — is it safe, what it costs, how much you would save, or where to find gas near you.</p></div>
+        <div class="chat-msg ai"><p>Hello! Ask me anything — CNG in Nigeria, how to use FindCNG, or anything else at all.</p></div>
       </div>
       <div class="chips chat-suggest">
         <button class="chip" data-q="Is CNG safe?">Is CNG safe?</button>
@@ -347,12 +347,12 @@
         <button class="chip" data-q="Where is the nearest station with gas?">Where is the nearest station with gas?</button>
       </div>
       <div class="chat-input-row">
-        <input type="text" id="chat-input" placeholder="Ask about CNG…" maxlength="500" aria-label="Your question about CNG" autocomplete="off">
+        <input type="text" id="chat-input" placeholder="Ask anything…" maxlength="500" aria-label="Your question" autocomplete="off">
         <button class="btn small" id="chat-send">Ask</button>
       </div>
       <p class="tiny" id="chat-count" style="margin:8px 0 0;text-align:right">0/500</p>
     </div>
-    <p class="small" style="margin-top:10px">Answers come from verified FindCNG sources + live web search.</p>
+    <p class="small" style="margin-top:10px">Answers come from the FindCNG knowledge base, live data and web search.</p>
     <p class="small">For live gas at a station right now, the Map tab is the fastest check — the chat only knows reports from the last 2 hours, and says so plainly when there is no fresh report. Your questions are not stored — see <a href="#" onclick="showView('privacy');return false;">Privacy</a>.</p>
   </div>
 </section>
@@ -405,7 +405,7 @@
       <li><b>Your location stays yours.</b> When you tap “Use my location” or enter a postcode, it is used only to find stations near you. It is never stored with your identity, and never sent anywhere except to show you nearby stations.</li>
       <li><b>Reports are anonymous.</b> A report records only the station, the status, the time, and an anonymous technical fingerprint (to stop spam). It cannot identify you.</li>
       <li><b>No ads, no tracking for advertising, no selling data.</b></li>
-      <li><b>AI chat:</b> when you ask a question in “Ask about CNG”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
+      <li><b>AI chat:</b> when you ask a question in “Ask anything”, your question is sent to Google's Gemini API to generate an answer. FindCNG does not store your questions or the answers — there are no chat logs.</li>
       <li><b>On your device only:</b> your vehicle type (calculator), your favourite stations, and your map style choice are stored in your own browser (localStorage). They never leave your phone.</li>
     </ul>
   </div>
@@ -472,7 +472,7 @@
 <section id="view-more" class="view">
   <h2>More</h2>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('chat')">💬 Ask about CNG <span>Plain answers about safety, prices, savings and where to find gas</span></button>
+    <button class="menu-item" onclick="showView('chat')">💬 Ask anything <span>Plain answers — CNG, the app, or anything else</span></button>
     <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English + Pidgin</span></button>
     <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
     <button class="menu-item" onclick="showView('outages')">🔴 Out of gas <span>Stations drivers report as finished right now</span></button>

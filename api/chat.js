@@ -1,6 +1,10 @@
-// POST /api/chat — "Ask about CNG" AI answers.
-// Body: { question } (max 500 chars).
+// POST /api/chat — "Ask anything" AI answers.
+// Body: { question, history? } (question max 500 chars; history is the
+// recent conversation, [{ role: "user"|"model", text }], page memory only).
 //
+// A GENERAL assistant, like Gemini itself — it answers ANY question, on
+// any topic, with expert knowledge of the FindCNG app and CNG in Nigeria
+// layered on top (Saheed, 19 Nov 2026: the CNG-only scope is gone).
 // Answers come from Google's Gemini API (free tier, no card, no spend),
 // grounded in three live sources assembled server-side before the call:
 //   1. data/chat-knowledge.json — the verified FindCNG knowledge base
@@ -10,15 +14,23 @@
 //   3. For availability questions: fresh availability_reports (last 2 hours
 //      only). The LLM is told explicitly when NO recent report exists —
 //      it must never invent live availability.
-// Plus a best-effort web search (no key): a fallback chain — DuckDuckGo
-// Lite, then Bing HTML, then the Wikipedia API — tried in turn until one
-// returns results. On ANY search failure the answer proceeds without it
-// and search_available:false is returned. Each attempt logs its outcome
-// server-side (endpoint + status only, never the query).
+// Plus a best-effort web search (no key) — but ONLY when the question
+// needs fresh/external facts (news, prices, Nigeria-specific facts). General
+// knowledge questions skip the search entirely, which is what makes them
+// fast. The chain is DuckDuckGo Lite, then Bing HTML, then the Wikipedia
+// API, tried in turn until one returns results. On ANY search failure the
+// answer proceeds without it and search_available:false is returned. Each
+// attempt logs its outcome server-side (endpoint + status only, never
+// the query).
 //
-// The model answers GENERAL CNG questions from its own knowledge, but
 // Nigeria-specific facts (prices, stations, incidents, Pi-CNG/NADDC
 // findings) must come from the knowledge base or the search results.
+// General knowledge is answered from the model's own knowledge.
+//
+// Speed (19 Nov 2026): the lite model answers FIRST (it is the fastest),
+// 3.8-flash is the fallback; per-attempt timeout 15s; the search runs
+// only when needed. If every model fails, the route still answers 200
+// with a helpful fallback message — the chat never shows a bare error.
 //
 // Env: GEMINI_API_KEY (free Google AI Studio key). Without it the route
 // answers { configured: false } and the app shows "being set up" —
@@ -26,12 +38,12 @@
 import { json, sb, supabaseConfigured, rateLimit, isMissingTableError } from "./_lib.js";
 import { readFileSync } from "node:fs";
 
-// Model chain — 3.8-flash first, 3.5-flash-lite as the overload fallback.
-// 18 Nov 2026: gemini-2.5-flash is retired for new API users (Gemini 404);
-// Google's own error message directs new users to gemini-3.8-flash. The
-// lite model is Google's own recommended simpler alternative, and our
-// answers are short and grounded, so it is plenty when 3.8 is overloaded.
-const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+// Model chain — lite FIRST (it is the fastest model, and our answers are
+// short), 3.8-flash as the stronger fallback. 18 Nov 2026: gemini-2.5-flash
+// is retired for new API users (Gemini 404); Google's own error message
+// directs new users to gemini-3.8-flash. 19 Nov 2026: the order was
+// flipped lite-first for speed (Saheed: "I want the AI to be very fast").
+const MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
 const geminiUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 const MAX_QUESTION = 500;
 // 1200, not 400: on thinking models the thinking tokens count toward the
@@ -39,16 +51,22 @@ const MAX_QUESTION = 500;
 // returned one-sentence answers. The prompt still asks for ~150 words.
 const MAX_OUTPUT_TOKENS = 1200;
 const REPORT_TTL_MS = 2 * 60 * 60 * 1000; // same 2-hour window as the app
-// Total budget for the whole search chain. Worst case (8s search + 2 x 25s
-// Gemini) still fits the 60s function cap.
-const SEARCH_TOTAL_MS = 8000;
+// Total budget for the whole search chain. Worst case (5s search + 2 x 15s
+// Gemini + 4s wait + 12s retry) still fits the 60s function cap.
+const SEARCH_TOTAL_MS = 5000;
 // Per-endpoint cap inside the total budget.
-const SEARCH_ATTEMPT_MS = 4000;
+const SEARCH_ATTEMPT_MS = 2500;
 const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-// Per-attempt timeout for one Gemini call. Budget: 2 models x 25s + ~8s
-// search stays inside the 60s function cap (no backoff between models —
-// the model switch itself is the remedy for overload).
-const GEMINI_TIMEOUT_MS = 25000;
+// Per-attempt timeout for one Gemini call. 15s, not 25s: the lite model
+// answers short questions in a few seconds, and a slow attempt is better
+// abandoned for the next model than waited on. Budget: 2 models x 15s +
+// 4s wait + 12s retry + ~5s search stays inside the 60s function cap.
+const GEMINI_TIMEOUT_MS = 15000;
+// History: the last few exchanges, so follow-ups ("retry that", "what
+// about...?") work. Capped hard — the frontend only ever sends page
+// memory, and the server trusts nothing about its shape.
+const MAX_HISTORY_TURNS = 12; // messages, i.e. 6 exchanges
+const MAX_HISTORY_TEXT = 500; // chars per message
 
 // --- Knowledge base + station names (loaded once per instance) ----------
 let knowledgeText = null; // null = not tried yet; "" = failed to load
@@ -230,15 +248,31 @@ async function searchWikipedia(question, timeoutMs) {
 const JUNK_TITLE_RE = /\b(sign in|log in|login|my account|create account|forgot password|reset password)\b/i;
 const JUNK_URL_RE = /\/(login|signin|sign-in|auth|account\/login|my-account)/i;
 const SEARCH_TOPIC_RE = /\b(cng|natural gas|lpg|gas|fuel|petrol|diesel|station|conversion|convert|cylinder|engine|vehicle|car|savings|price|nigeria|pi-cng|naddc|refuel|filling|queue|kit)\b/i;
-function isUsableResult(r) {
+function isUsableResult(r, cngTopic) {
   if (JUNK_TITLE_RE.test(r.title || "") || JUNK_URL_RE.test(r.url || "")) return false;
+  // The CNG topic filter applies ONLY to CNG questions. A general question
+  // ("What is a noun?") must keep its general results — filtering them to
+  // CNG topics would drop every usable hit.
+  if (!cngTopic) return true;
   return SEARCH_TOPIC_RE.test(`${r.title || ""} ${r.snippet || ""}`);
 }
-async function webSearch(question) {
+// Does this question need fresh/external facts? News, prices, incidents,
+// Nigeria-specific and CNG-station questions do. General knowledge
+// ("What is a noun?"), explanations, greetings and in-app help do not —
+// skipping the search is what makes those answers fast.
+const SEARCH_NEEDED_RE = /\b(news|latest|today|yesterday|recent|price|cost|naira|₦|incident|explosion|accident|station|pi-cng|naddc|nigeria|lagos|abuja|kano|kaduna|ibadan|benin|port harcourt|enugu|jos|ilorin|owerri|refuel|nearest|near me|conversion centre|filling station|where.*gas|how much.*(save|savings|cost))\b/i;
+const CNG_TOPIC_RE = /\b(cng|natural gas|lpg|gas|fuel|petrol|diesel|station|conversion|convert|cylinder|engine|vehicle|car|savings|price|cost|safety|safe|nigeria|findcng|refuel|filling|queue|kit|pi-cng|naddc)\b/i;
+function needsSearch(question) {
+  return SEARCH_NEEDED_RE.test(question) || CNG_TOPIC_RE.test(question);
+}
+async function webSearch(question, cngTopic) {
   const started = Date.now();
+  // CNG questions get the "CNG Nigeria" scope; general questions search
+  // as asked — scoping "What is a noun?" to CNG would return junk.
+  const q = cngTopic ? `${question} CNG Nigeria` : question;
   const attempts = [
-    { name: "ddg-lite", run: (ms) => searchDDGLite(`${question} CNG Nigeria`, ms) },
-    { name: "bing", run: (ms) => searchBing(`${question} CNG Nigeria`, ms) },
+    { name: "ddg-lite", run: (ms) => searchDDGLite(q, ms) },
+    { name: "bing", run: (ms) => searchBing(q, ms) },
     { name: "wikipedia", run: (ms) => searchWikipedia(question, ms) },
   ];
   for (const a of attempts) {
@@ -246,7 +280,7 @@ async function webSearch(question) {
     if (remaining < 500) break;
     const budget = Math.min(SEARCH_ATTEMPT_MS, remaining);
     try {
-      const results = (await a.run(budget)).filter(isUsableResult);
+      const results = (await a.run(budget)).filter((r) => isUsableResult(r, cngTopic));
       if (results.length) {
         console.error(`chat search: ${a.name} ok (${results.length} results)`);
         return results;
@@ -333,23 +367,25 @@ async function availabilityContext(question) {
 }
 
 // --- Gemini ----------------------------------------------------------------
-const SYSTEM_RULES = `You are the FindCNG assistant, answering questions about CNG (compressed natural gas) in Nigeria and about the FindCNG app. Follow these rules strictly:
-1. NIGERIA-SPECIFIC FACTS — prices, stations, incidents, Pi-CNG / NADDC findings, FindCNG app facts — must come from the VERIFIED KNOWLEDGE BASE or the LIVE WEB SEARCH results below. Never use your own general knowledge for Nigerian facts, prices or incidents, and never invent station details or prices.
-2. GENERAL CNG KNOWLEDGE — how CNG works, how it affects engines, safety principles, how conversions work, practice in other countries — you MAY answer from your own knowledge. If you are unsure about a general fact, say so rather than guessing.
-3. Prices ALWAYS carry their date (e.g. "₦380/SCM since September 2025"). Never quote a price without its date.
-4. NEVER invent live availability. Use ONLY the LIVE AVAILABILITY block below. If it says no recent report exists, say exactly that and point the user at the Map tab in the FindCNG app. Never guess whether a station has gas.
-5. If a Nigeria-specific answer is not established in the knowledge base or the search results, say "I don't know" plainly — never guess. A general CNG question you genuinely cannot answer also gets a plain "I don't know".
+// 19 Nov 2026: the CNG-only scope is GONE (Saheed: "I want it to be very
+// diverse like Gemini itself, while it can still give in-app guide").
+// The assistant answers ANY question, on any topic, and thinks widely.
+// What stays: Nigeria-specific facts must be grounded, prices carry
+// dates, live availability is never invented, and no DIY gas instructions.
+const SYSTEM_RULES = `You are the FindCNG assistant — a general AI assistant, like Gemini, with expert knowledge of the FindCNG app and of CNG (compressed natural gas) in Nigeria. Answer ANY question the user asks, on any topic, and think widely — you are not limited to one subject. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. Do NOT end with a "Sources:" line — the chat shows no sources at all.
+Rules:
+1. CONVERSATION MEMORY: the conversation history is part of this chat. Answer follow-ups ("what about...?", "and then?", "retry that") using what was already said — never say you cannot see the previous question.
+2. NIGERIA-SPECIFIC FACTS — prices, stations, incidents, Pi-CNG / NADDC findings, FindCNG app facts — must come from the VERIFIED KNOWLEDGE BASE or the LIVE WEB SEARCH results below. Never use your own general knowledge for Nigerian facts, prices or incidents, and never invent station details or prices.
+3. GENERAL KNOWLEDGE — science, language, history, maths, how things work, anything else — answer from your own knowledge, the way Gemini would. If you are unsure about a fact, say so rather than guessing.
+4. Prices ALWAYS carry their date (e.g. "₦380/SCM since September 2025"). Never quote a price without its date.
+5. NEVER invent live availability. Use ONLY the LIVE AVAILABILITY block below. If it says no recent report exists, say exactly that and point the user at the Map tab in the FindCNG app. Never guess whether a station has gas.
 6. Never give DIY instructions for gas systems, cylinders, fittings or repairs. Direct the user to a certified installer / accredited conversion centre instead.
-7. SCOPE: this chat answers CNG questions only. If the question is not about CNG, fuel, vehicles or the FindCNG app (for example "What is a noun?"), do NOT answer it and do NOT reply with a bare "I don't know". Instead say you answer questions about CNG — fuel savings, safety, stations and conversions in Nigeria — and suggest a CNG question to try.
-8. Short, plain English, about 150 words maximum. No markdown headings; simple sentences. Do NOT end with a "Sources:" line — the chat shows no sources at all.`;
+7. If you genuinely do not know something, say "I don't know" plainly — never guess. But that is the last resort: think first, and only say it when you truly cannot answer.
+8. FINDCNG APP HELP: you know the app — Map tab (live status, nearest stations), Stations tab (134 refuelling stations), Centres tab (617 conversion centres), one-tap Has gas / Out reporting, WhatsApp share, postcode labels. When a question is about using the app, guide the user to the right tab.`;
 
 // Graceful fallback when the model still returns a bare "I don't know."
-// (the prompt asks for the scope message, but this is the safety net).
-// Off-topic questions get the scope message; on-topic ones get an honest
-// "not covered yet" with a nudge toward what the chat does answer.
-const SCOPE_MESSAGE = "I answer questions about CNG — fuel savings, safety, stations and conversions in Nigeria. Try asking how much you could save by switching to CNG, whether CNG is safe, or where to find a conversion centre near you.";
-const UNKNOWN_CNG_MESSAGE = "I don't know — that isn't covered in the FindCNG knowledge base yet. Try asking about CNG safety, fuel savings, stations or conversions.";
-const CNG_TOPIC_RE = /\b(cng|natural gas|lpg|gas|fuel|petrol|diesel|station|conversion|convert|cylinder|engine|vehicle|car|savings|price|cost|safety|safe|nigeria|findcng|refuel|filling|queue|kit|pi-cng|naddc)\b/i;
+// (the prompt asks it to think first, but this is the safety net).
+const UNKNOWN_MESSAGE = "I don't know — I couldn't find a solid answer for that. Try asking it a different way, or ask me something else.";
 const BARE_IDK_RE = /^(i'?m (sorry|afraid)[,.]?\s*)?i (don't|do not) know[.!]?$/i;
 function isBareIDontKnow(text) {
   const t = text.trim().replace(/\s+/g, " ");
@@ -367,12 +403,35 @@ function stripSourcesLine(text) {
   return text;
 }
 
-async function askGeminiOnce(apiKey, prompt, model, timeoutMs) {
+// Validate the conversation history the frontend sends (page memory only).
+// Returns Gemini `contents` turns: alternating user/model roles, starting
+// with user, each message truncated. Anything malformed is dropped, and a
+// trailing user turn is dropped too — the new question follows it, and
+// two user turns in a row would break the alternation Gemini requires.
+function parseHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  const turns = [];
+  for (const m of raw.slice(-MAX_HISTORY_TURNS)) {
+    if (!m || typeof m !== "object") continue;
+    const role = m.role === "model" ? "model" : m.role === "user" ? "user" : null;
+    const text = String(m.text || "").trim().slice(0, MAX_HISTORY_TEXT);
+    if (!role || !text) continue;
+    // Enforce alternation starting with user; drop whatever breaks it.
+    if (turns.length === 0 && role !== "user") continue;
+    if (turns.length > 0 && turns[turns.length - 1].role === role) continue;
+    turns.push({ role, parts: [{ text }] });
+  }
+  if (turns.length > 0 && turns[turns.length - 1].role === "user") turns.pop();
+  return turns;
+}
+
+async function askGeminiOnce(apiKey, systemText, contents, model, timeoutMs) {
   const r = await fetch(geminiUrl(model), {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      systemInstruction: { parts: [{ text: systemText }] },
+      contents,
       // 18 Nov 2026: 3.8-flash is a thinking model — its default thinking
       // level (medium) made live calls run past 45s. "low" keeps answers
       // fast; our answers are short and grounded, not reasoning tasks.
@@ -393,22 +452,21 @@ async function askGeminiOnce(apiKey, prompt, model, timeoutMs) {
   return text;
 }
 
-async function askGemini(apiKey, prompt) {
-  // Model fallback chain: try each model once; on transient overload
+async function askGemini(apiKey, systemText, contents) {
+  // Model fallback chain: lite first, then 3.8-flash; on transient overload
   // (503/429) OR a timeout, move straight to the next model. Budget:
-  // 2 x 25s + ~8s search stays inside the 60s function cap.
+  // 2 x 15s + 4s wait + 12s retry + ~5s search stays inside the 60s cap.
   // 18 Nov 2026 ~18:10 WAT: the free tier was so overloaded at peak hours
   // that BOTH models 503'd on about half the requests (Vercel logs show
   // interleaved successes and "high demand" 503s within the same minute).
-  // The 503s come back FAST (~10s for the whole chain), so when the chain
-  // fails fast on overload, wait 6s and try the lite model once more —
-  // spikes often clear within seconds. Worst case (20s + 6s + 20s + 8s
-  // search) still fits the 60s cap; slow failures (timeouts) never retry.
+  // The 503s come back FAST, so when the chain fails fast on overload,
+  // wait 4s and try the lite model once more — spikes often clear within
+  // seconds. Slow failures (timeouts) never retry.
   const started = Date.now();
   let lastError = null;
   for (let i = 0; i < MODELS.length; i++) {
     try {
-      return await askGeminiOnce(apiKey, prompt, MODELS[i], GEMINI_TIMEOUT_MS);
+      return await askGeminiOnce(apiKey, systemText, contents, MODELS[i], GEMINI_TIMEOUT_MS);
     } catch (e) {
       // Transient failures (overload OR timeout) fall through to the next
       // model; anything else stops the chain immediately.
@@ -420,11 +478,17 @@ async function askGemini(apiKey, prompt) {
   const elapsed = Date.now() - started;
   if (lastError && /503|429/.test(lastError.message) && elapsed < 20000) {
     console.error(`chat retry: chain failed in ${elapsed}ms on overload, retrying lite model once`);
-    await new Promise((r) => setTimeout(r, 6000));
-    return await askGeminiOnce(apiKey, prompt, MODELS[MODELS.length - 1], 20000);
+    await new Promise((r) => setTimeout(r, 4000));
+    return await askGeminiOnce(apiKey, systemText, contents, MODELS[0], 12000);
   }
   throw lastError || new Error("Gemini request failed");
 }
+
+// Last resort when every model fails: still answer 200 with a helpful
+// message, never a bare error — the chat stays usable and the user is
+// told exactly where to look meanwhile. (19 Nov 2026: Saheed — an error
+// bubble "is not proper for an AI".)
+const FALLBACK_ANSWER = "The AI service is very busy right now, so I couldn't get an answer through — it usually clears in a few seconds, so please ask again. Meanwhile, the Map tab shows live station status, the Stations tab lists all 134 refuelling stations, and the Safety hub answers the most common CNG questions.";
 
 // --- Handler ---------------------------------------------------------------
 export default async function handler(req, res) {
@@ -446,10 +510,13 @@ export default async function handler(req, res) {
   if (question.length > MAX_QUESTION) {
     return json(res, 400, { ok: false, error: `question must be ${MAX_QUESTION} characters or fewer` });
   }
+  const history = parseHistory((req.body || {}).history);
+  const cngTopic = CNG_TOPIC_RE.test(question);
+  const doSearch = needsSearch(question);
   try {
     const [news, searchResults, availability] = await Promise.all([
       recentNews(),
-      webSearch(question),
+      doSearch ? webSearch(question, cngTopic) : Promise.resolve([]),
       AVAILABILITY_RE.test(question) ? availabilityContext(question) : Promise.resolve(null),
     ]);
     const knowledge = loadKnowledge();
@@ -457,19 +524,22 @@ export default async function handler(req, res) {
       ? "RECENT NEWS (from FindCNG, newest first):\n" + news.map((n) =>
           `- ${n.date} — ${n.title}${n.summary ? ": " + n.summary : ""}`).join("\n")
       : "RECENT NEWS: none available.";
-    const searchBlock = searchResults.length
-      ? "LIVE WEB SEARCH results (use these for facts newer than the knowledge base):\n" + searchResults.map((s) =>
-          `- ${s.title} (${s.url})${s.snippet ? " — " + s.snippet : ""}`).join("\n")
-      : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own general CNG knowledge.";
-    const prompt = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general CNG questions from your own knowledge and search results; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}\n\n${availability ? availability + "\n\n" : ""}USER QUESTION: ${question}`;
-    let answer = await askGemini(apiKey, prompt);
+    const searchBlock = !doSearch
+      ? "LIVE WEB SEARCH: skipped — this question does not need fresh facts. Answer from your own knowledge."
+      : searchResults.length
+        ? "LIVE WEB SEARCH results (use these for facts newer than the knowledge base):\n" + searchResults.map((s) =>
+            `- ${s.title} (${s.url})${s.snippet ? " — " + s.snippet : ""}`).join("\n")
+        : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own knowledge.";
+    const systemText = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general questions from your own knowledge; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}${availability ? "\n\n" + availability : ""}`;
+    const contents = [...history, { role: "user", parts: [{ text: question }] }];
+    let answer = await askGemini(apiKey, systemText, contents);
     // The chat shows no sources at all, so no "Sources:" line belongs
     // in the answer text; strip one if the model appended it anyway.
     answer = stripSourcesLine(answer);
-    // A bare "I don't know." helps nobody: off-topic questions get the
-    // graceful scope message, on-topic ones an honest "not covered yet".
+    // A bare "I don't know." helps nobody — replace it with an honest
+    // nudge to rephrase or ask something else.
     if (isBareIDontKnow(answer)) {
-      answer = CNG_TOPIC_RE.test(question) ? UNKNOWN_CNG_MESSAGE : SCOPE_MESSAGE;
+      answer = UNKNOWN_MESSAGE;
     }
     return json(res, 200, {
       ok: true,
@@ -479,7 +549,9 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     // Log the real cause server-side (status + message only — never the key).
+    // Then answer 200 with the helpful fallback, never a bare error —
+    // the chat stays usable even when the AI service is down.
     console.error("chat failed:", e && e.message ? e.message : String(e));
-    return json(res, 502, { ok: false, error: "The AI service could not answer right now — please try again in a moment." });
+    return json(res, 200, { ok: true, answer: FALLBACK_ANSWER, degraded: true, configured: true });
   }
 }

@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.8"; // bumped 19 Nov 2026 — Stations/Centres split: Stations tab shows refuelling + both only (134), Centres tab conversion + both only (617+live); type chips removed from Stations; per-tab state counts
+const CACHE = "findcng-v2.4.9"; // bumped 19 Nov 2026 — "Ask anything" chat: general assistant (CNG-only scope gone), lite-first model chain, web search only when needed, conversation memory, graceful fallback instead of an error bubble
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
