@@ -35,7 +35,7 @@
     </div>
   </div>
   <div class="top-links">
-    <a href="#" onclick="showView('about');return false;">About &amp; sources</a>
+    <a href="#" data-view-link="about">About &amp; sources</a>
   </div>
   </div>
 </header>
@@ -128,7 +128,7 @@
   <div class="card" id="home-live-card">
     <h3 style="margin-top:0">Live availability</h3>
     <div id="home-live"><p class="small">Loading live reports…</p></div>
-    <p class="small" style="margin-bottom:0"><a href="#" onclick="showView('outages');return false;">See stations out of gas →</a></p>
+    <p class="small" style="margin-bottom:0"><a href="#" data-view-link="outages">See stations out of gas →</a></p>
   </div>
 
   <div class="card" id="home-centres-card">
@@ -139,29 +139,29 @@
   <div class="card">
     <h3 style="margin-top:0">National CNG statistics</h3>
     <div id="home-stats"><p class="small">Loading coverage numbers…</p></div>
-    <p class="small" style="margin-bottom:0">Reports expire after <b>2 hours</b> — old information never misleads you. No account, no name, no phone number needed to report. <a href="#" onclick="showView('about');return false;">How it works →</a></p>
+    <p class="small" style="margin-bottom:0">Reports expire after <b>2 hours</b> — old information never misleads you. No account, no name, no phone number needed to report. <a href="#" data-view-link="about">How it works →</a></p>
   </div>
 
   <div class="card">
     <h3 style="margin-top:0">Find your way with your postcode</h3>
-    <p style="margin:0">Every building in Nigeria now has its own 11-character digital postcode. Enter your 6-digit area code above to centre the map on your district, or your 11-character building code to check it — then set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. <a href="#" onclick="showView('postcode');return false;">Explore postcodes →</a></p>
+    <p style="margin:0">Every building in Nigeria now has its own 11-character digital postcode. Enter your 6-digit area code above to centre the map on your district, or your 11-character building code to check it — then set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. <a href="#" data-view-link="postcode">Explore postcodes →</a></p>
   </div>
 
   <div class="card">
     <h3 style="margin-top:0">How much would you save?</h3>
     <div id="home-savings"><p class="small">Loading…</p></div>
-    <p style="margin:8px 0 0"><a href="#" onclick="showView('calculator');return false;">Run the savings calculator with your own numbers →</a></p>
+    <p style="margin:8px 0 0"><a href="#" data-view-link="calculator">Run the savings calculator with your own numbers →</a></p>
   </div>
 
   <div class="card factbox">
     <h3 style="margin-top:0">Is CNG safe?</h3>
-    <p style="margin:0">A certified CNG system is safe — fake cylinders and quack installers are the danger. Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation. <a href="#" onclick="showView('safety');return false;">Read the safety hub →</a></p>
+    <p style="margin:0">A certified CNG system is safe — fake cylinders and quack installers are the danger. Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation. <a href="#" data-view-link="safety">Read the safety hub →</a></p>
   </div>
 
   <div class="card">
     <h3 style="margin-top:0">Latest CNG updates</h3>
     <div id="home-news"><p class="small">Loading news…</p></div>
-    <p class="small" style="margin-bottom:0"><a href="#" onclick="showView('news');return false;">All CNG news →</a></p>
+    <p class="small" style="margin-bottom:0"><a href="#" data-view-link="news">All CNG news →</a></p>
   </div>
 </section>
 
@@ -184,7 +184,7 @@
   <p class="result-count" id="station-count"></p>
   <div id="station-results"></div>
   <button class="btn outline hidden" id="station-more">Show more</button>
-  <p class="small" style="margin-top:14px">Know a CNG station that is not listed here? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it →</a> A moderator checks it against official lists before adding it.</p>
+  <p class="small" style="margin-top:14px">Know a CNG station that is not listed here? <a href="#" data-listing-link="NEW|missing">Suggest it →</a> A moderator checks it against official lists before adding it.</p>
   <p class="small" id="nodata-note" style="margin-top:14px"></p>
 </section>
 
@@ -215,7 +215,7 @@
   <button class="btn outline hidden" id="centre-more">Show more</button>
   <div class="card warnbox">
     <h3 style="margin-top:0">Before you convert</h3>
-    <p style="margin:0">Ask the centre to show its NADDC/Pi-CNG accreditation certificate. Check the certificate number. Never accept a welded, second-hand or cooking-gas cylinder — that is what causes explosions. <a href="#" onclick="showView('safety');return false;">Why it matters →</a></p>
+    <p style="margin:0">Ask the centre to show its NADDC/Pi-CNG accreditation certificate. Check the certificate number. Never accept a welded, second-hand or cooking-gas cylinder — that is what causes explosions. <a href="#" data-view-link="safety">Why it matters →</a></p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">What the badges mean</h3>
@@ -412,7 +412,7 @@
   <p class="lede">Ask anything — CNG, the FindCNG app, or anything else — and get a plain answer. No account needed.</p>
   <div id="chat-setup" class="card warnbox hidden">
     <h3 style="margin-top:0">AI answers are being set up</h3>
-    <p style="margin:0">The chat answers are being set up — check back soon. In the meantime, the <a href="#" onclick="showView('safety');return false;">Safety hub</a> and <a href="#" onclick="showView('help');return false;">Help &amp; FAQ</a> answer the most common questions.</p>
+    <p style="margin:0">The chat answers are being set up — check back soon. In the meantime, the <a href="#" data-view-link="safety">Safety hub</a> and <a href="#" data-view-link="help">Help &amp; FAQ</a> answer the most common questions.</p>
   </div>
   <div id="chat-box">
     <div class="card chat-card">
@@ -431,7 +431,7 @@
       <p class="tiny" id="chat-count" style="margin:8px 0 0;text-align:right">0/500</p>
     </div>
     <p class="small" style="margin-top:10px">Answers come from the FindCNG knowledge base, live data and web search.</p>
-    <p class="small">For live gas at a station right now, the Map tab is the fastest check — the chat only knows reports from the last 2 hours, and says so plainly when there is no fresh report. Your questions are not stored — see <a href="#" onclick="showView('privacy');return false;">Privacy</a>.</p>
+    <p class="small">For live gas at a station right now, the Map tab is the fastest check — the chat only knows reports from the last 2 hours, and says so plainly when there is no fresh report. Your questions are not stored — see <a href="#" data-view-link="privacy">Privacy</a>.</p>
   </div>
 </section>
 
@@ -464,11 +464,11 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">How does a centre get listed?</h3>
-    <p style="margin:0">Listings come from official government and agency sources — the Pi-CNG registers and other public lists. A centre can also register through the <a href="#" onclick="showView('operator');return false;">Operator portal</a> — but nothing is published until a moderator has checked it against official lists and approved it. If a listing is wrong, open it and tap “Report an incorrect listing”.</p>
+    <p style="margin:0">Listings come from official government and agency sources — the Pi-CNG registers and other public lists. A centre can also register through the <a href="#" data-view-link="operator">Operator portal</a> — but nothing is published until a moderator has checked it against official lists and approved it. If a listing is wrong, open it and tap “Report an incorrect listing”.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">I run a station or centre. How do I update my listing?</h3>
-    <p style="margin:0">Use the <a href="#" onclick="showView('operator');return false;">Operator portal</a>: claim your station (you will need a business documentation reference, and the moderator confirms by phone), request a correction, or send an availability update. Every submission is reviewed by a moderator — nothing is published, and no availability update is marked “Operator confirmed”, until it is approved.</p>
+    <p style="margin:0">Use the <a href="#" data-view-link="operator">Operator portal</a>: claim your station (you will need a business documentation reference, and the moderator confirms by phone), request a correction, or send an availability update. Every submission is reviewed by a moderator — nothing is published, and no availability update is marked “Operator confirmed”, until it is approved.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
@@ -485,7 +485,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">A station is missing from the list</h3>
-    <p style="margin:0">Know a CNG station or conversion centre that is not listed? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it here</a> — give its name, address and state, and a moderator will check it against official lists. Nothing is published unverified.</p>
+    <p style="margin:0">Know a CNG station or conversion centre that is not listed? <a href="#" data-listing-link="NEW|missing">Suggest it here</a> — give its name, address and state, and a moderator will check it against official lists. Nothing is published unverified.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">How do I reach the team?</h3>
@@ -710,7 +710,7 @@
     <p class="small" style="margin:8px 0 0" id="about-coverage-note">Coordinates are never guessed — an entry without coordinates appears in the list with its address only. LGA data from the Pi-CNG register is unreliable (about 1 in 5 is wrong), so this app does not use LGA anywhere.</p>
   </div>
   <footer class="appfoot">
-    <a href="#" onclick="showView('privacy');return false;">Privacy</a> · <a href="#" onclick="showView('help');return false;">Help</a><br>
+    <a href="#" data-view-link="privacy">Privacy</a> · <a href="#" data-view-link="help">Help</a><br>
     FindCNG Nigeria · November 2026
   </footer>
 </section>
@@ -720,25 +720,25 @@
   <h2>More</h2>
   <h3 class="menu-group">Discover</h3>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('chat')">💬 Ask anything <span>Plain answers — CNG, the app, or anything else</span></button>
-    <button class="menu-item" onclick="showView('postcode')">✉️ Postcode explorer <span>Check a 6-digit or 11-character postcode</span></button>
-    <button class="menu-item" onclick="showView('intelligence')">📊 CNG Intelligence <span>National overview, state comparison, gaps, growth, data freshness</span></button>
+    <button class="menu-item" data-view-link="chat">💬 Ask anything <span>Plain answers — CNG, the app, or anything else</span></button>
+    <button class="menu-item" data-view-link="postcode">✉️ Postcode explorer <span>Check a 6-digit or 11-character postcode</span></button>
+    <button class="menu-item" data-view-link="intelligence">📊 CNG Intelligence <span>National overview, state comparison, gaps, growth, data freshness</span></button>
   </div>
   <h3 class="menu-group">Learn &amp; save</h3>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English, Pidgin, Hausa, Yoruba, Igbo</span></button>
-    <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
-    <button class="menu-item" onclick="showView('news')">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
+    <button class="menu-item" data-view-link="safety">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English, Pidgin, Hausa, Yoruba, Igbo</span></button>
+    <button class="menu-item" data-view-link="calculator">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
+    <button class="menu-item" data-view-link="news">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
   </div>
   <h3 class="menu-group">About &amp; support</h3>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('help')">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
-    <button class="menu-item" onclick="showView('about')">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
-    <button class="menu-item" onclick="showView('privacy')">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
+    <button class="menu-item" data-view-link="help">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
+    <button class="menu-item" data-view-link="about">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
+    <button class="menu-item" data-view-link="privacy">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
   </div>
   <h3 class="menu-group">For operators</h3>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('operator')">🏢 Operator portal <span>Register a centre, claim your station, request updates — reviewed by a moderator</span></button>
+    <button class="menu-item" data-view-link="operator">🏢 Operator portal <span>Register a centre, claim your station, request updates — reviewed by a moderator</span></button>
   </div>
   <h3>★ Your favourite stations</h3>
   <div id="fav-list"></div>

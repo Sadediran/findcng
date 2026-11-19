@@ -564,12 +564,12 @@
           `<span class="small">${esc(locLabel(s))}</span></div>` +
           `<div style="text-align:right;flex:0 0 auto"><span class="dist-chip">${fmtKm(d)}</span></div></div>`
         ).join("");
-        inner += `<p style="margin:8px 0 0"><a href="#" onclick="showView('centres');return false;">All conversion centres →</a></p>`;
+        inner += `<p style="margin:8px 0 0"><a href="#" data-view-link=\"centres\">All conversion centres →</a></p>`;
       } else {
-        inner += `<p class="small">No accredited centre with coordinates near your spot yet — the full list is on the Centres tab. <a href="#" onclick="showView('centres');return false;">Browse centres →</a></p>`;
+        inner += `<p class="small">No accredited centre with coordinates near your spot yet — the full list is on the Centres tab. <a href="#" data-view-link=\"centres\">Browse centres →</a></p>`;
       }
     } else {
-      inner += `<p style="margin:0">Set your location above to see the nearest accredited centres. <a href="#" onclick="showView('centres');return false;">Check an installer →</a></p>`;
+      inner += `<p style="margin:0">Set your location above to see the nearest accredited centres. <a href="#" data-view-link=\"centres\">Check an installer →</a></p>`;
     }
     box.innerHTML = inner;
     box.querySelectorAll(".home-live-item").forEach((el) =>
@@ -697,7 +697,7 @@
         ? `<p style="margin:8px 0 0"><b>Listed entries but no refuelling location:</b> ${noRefuel.map((d) => esc(d.state)).join(", ")} — conversion centres only.</p>` : "") +
       (unmapped.length
         ? `<p style="margin:8px 0 0"><b>No mapped entries at all:</b> ${unmapped.map((d) => esc(d.state)).join(", ")} — every entry there is list-only until coordinates are recorded.</p>` : "") +
-      `<p class="small" style="margin:8px 0 0"><b>Read this carefully:</b> these are gaps in the DIRECTORY — what official lists have published so far. A state with few or no listed entries may still have CNG stations and conversion centres that no official list has published yet. FindCNG cannot verify a real infrastructure gap; only the official registers can. Know a station that is missing? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it →</a></p></div>` +
+      `<p class="small" style="margin:8px 0 0"><b>Read this carefully:</b> these are gaps in the DIRECTORY — what official lists have published so far. A state with few or no listed entries may still have CNG stations and conversion centres that no official list has published yet. FindCNG cannot verify a real infrastructure gap; only the official registers can. Know a station that is missing? <a href="#" data-listing-link=\"NEW|missing\">Suggest it →</a></p></div>` +
       // D. Postcode-area exploration (enriched below).
       `<div class="card"><h3 style="margin-top:0">Postcode areas</h3><div id="intel-postcode"><p class="small">Loading postcode areas…</p></div></div>` +
       // E. Infrastructure growth (enriched below).
@@ -731,7 +731,7 @@
       box.innerHTML =
         `<p style="margin-top:0">The app can centre the map on <b>${rows.length} six-digit postcode areas</b> (district centres, approximate). ` +
         `<b>${(stats && stats.with_postcode) || 0}</b> directory entries carry a postcode in the dataset. ` +
-        `For the 11-character building postcode, use the <a href="#" onclick="showView('postcode');return false;">Postcode Explorer</a> — it parses the code, names the state and LGA from NIPOST reference data, and checks whether the code is assigned.</p>` +
+        `For the 11-character building postcode, use the <a href="#" data-view-link=\"postcode\">Postcode Explorer</a> — it parses the code, names the state and LGA from NIPOST reference data, and checks whether the code is assigned.</p>` +
         `<table class="coverage-table"><tr><th>Postcode</th><th>Area</th><th>Mapped stations within 25 km</th><th></th></tr>` +
         rows.map((r) =>
           `<tr><td>${esc(r.code)}</td><td>${esc(r.place)}</td><td>${r.near}</td>` +
@@ -988,14 +988,18 @@
     const precLine = prec === "town" ? `<br><span class="badge area-pin">◉ Area pin — neighbourhood, not exact spot</span>`
       : prec === "approximate" ? `<br><span class="small">≈ Approximate location — near this spot, not exact</span>` : "";
     // One-tap report (19 Nov 2026): refuelling stations only, same rule
-    // as the card buttons. Inline onclick: Leaflet popups are plain HTML
+    // as the card buttons. Data attributes + document-level delegation:
+    // Leaflet popups are plain HTML strings, so the buttons carry
+    // data-quick-report / data-open-station and one delegated listener
+    // (init) handles them — no inline handlers, so the CSP can run
+    // without 'unsafe-inline' (Phase 4, §19).
     // strings with no bind step, so the handler must be global.
     const qr = (s.type !== "conversion" && !s.live)
-      ? `<br><button class="qr-btn qr-yes" style="margin-top:8px" onclick="quickReport('${s.id}','available',this)">✅ Has gas</button> <button class="qr-btn qr-no" onclick="quickReport('${s.id}','finished',this)">🔴 Out</button>`
+      ? `<br><button class="qr-btn qr-yes" style="margin-top:8px" data-quick-report=\"${s.id}|available\">✅ Has gas</button> <button class="qr-btn qr-no" data-quick-report=\"${s.id}|finished\">🔴 Out</button>`
       : "";
     return `<b>${esc(s.name)}</b><br>${esc(s.address || "")}<br>${esc(locLabel(s))}${d}<br>` +
       `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}${precLine}${qr}<br>` +
-      `<button class="btn small" style="margin-top:8px" onclick="openStation('${s.id}')">Details &amp; report</button>`;
+      `<button class="btn small" style="margin-top:8px" data-open-station=\"${s.id}\">Details &amp; report</button>`;
   }
   // Lightweight grid clustering (plain JS, no library): group markers into
   // 70px cells below zoom 14; tap a bubble to zoom in.
@@ -1763,7 +1767,7 @@
       (distText ? `<p class="hero-dist">📍 ${distText} from your spot</p>` : "") +
       `</div>`;
     const hero = photo
-      ? `<div class="detail-hero photo"><div class="detail-photo-wrap"><img src="${esc(photo.url)}" alt="Photo of ${esc(s.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.closest('.detail-hero').classList.remove('photo');this.closest('.detail-photo-wrap').remove()">${photo.attribution ? `<span class="photo-credit">Photo: ${esc(photo.attribution)}</span>` : ""}</div>${heroBody}</div>`
+      ? `<div class="detail-hero photo"><div class="detail-photo-wrap"><img src="${esc(photo.url)}" alt="Photo of ${esc(s.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">${photo.attribution ? `<span class="photo-credit">Photo: ${esc(photo.attribution)}</span>` : ""}</div>${heroBody}</div>`
       : `<div class="detail-hero">${heroBody}</div>`;
     let statusBlock;
     if (!reportsLive) {
@@ -1798,9 +1802,9 @@
         ? `<div class="card"><p><b>🆕 Just listed on the Pi-CNG register${s.liveListedAt ? " — " + fmtDate(s.liveListedAt) : ""}.</b></p>` +
           `<p class="small">This centre appeared on the live register after the last daily update. Its map pin, opening hours and reports appear once the daily check verifies it — usually within a day. The address above is what the register lists.</p></div>`
         : `<div class="card">${statusBlock}` +
-          `<button class="btn" onclick="openReport('${s.id}')">Report gas status here</button>` +
+          `<button class="btn" data-open-report=\"${s.id}\">Report gas status here</button>` +
           ((st === "finished" || st === "closed" || st === "low")
-            ? `<button class="btn yellow" style="margin-top:8px" onclick="backToNormal('${s.id}')">✅ Back to normal — gas is back</button>` : "") +
+            ? `<button class="btn yellow" style="margin-top:8px" data-back-normal=\"${s.id}\">✅ Back to normal — gas is back</button>` : "") +
           `</div>`) +
       `<div class="card"><h3 style="margin-top:0">Opening hours</h3>${hoursHtml(s)}</div>` +
       verificationCard(s) +
@@ -1814,8 +1818,8 @@
         `<a class="btn outline small" href="${shareHref}" target="_blank" rel="noopener">💬 Share on WhatsApp</a>` +
       `</div>` +
       (s.live ? "" : `<div class="detail-actions">` +
-        `<button class="btn outline small" onclick="openListing('${s.id}','incorrect')">⚠️ Report an incorrect listing</button>` +
-        `<button class="btn outline small" onclick="openListing('${s.id}','closed')">⛔ Report a closure</button>` +
+        `<button class="btn outline small" data-listing-link=\"${s.id}|incorrect\">⚠️ Report an incorrect listing</button>` +
+        `<button class="btn outline small" data-listing-link=\"${s.id}|closed\">⛔ Report a closure</button>` +
       `</div>`) +
       (s.live ? "" : `<div class="detail-actions">` +
         `<button class="btn outline small" id="detail-claim">🏢 Are you the operator? Claim this station</button>` +
@@ -1825,6 +1829,16 @@
       `<p class="small">Source: ${esc(s.src)}${s.acc && !s.live ? " · Checked 18 Nov 2026" : ""}${s.live && s.liveListedAt ? " · Listed " + fmtDate(s.liveListedAt) : ""} · Listing ID ${esc(s.id)}</p>`;
     const favBtnEl = $("detail-fav");
     if (favBtnEl) favBtnEl.addEventListener("click", () => { toggleFav(id); renderDetail(id); });
+    // Photo hero (2.1): if the photo fails to load, drop back to the
+    // clean typographic band. Wired here, not as an inline onerror, so
+    // the CSP can run without 'unsafe-inline' (Phase 4, §19).
+    const photoImg = box.querySelector(".detail-photo-wrap img");
+    if (photoImg) photoImg.addEventListener("error", () => {
+      const hero = photoImg.closest(".detail-hero");
+      if (hero) hero.classList.remove("photo");
+      const wrap = photoImg.closest(".detail-photo-wrap");
+      if (wrap) wrap.remove();
+    });
     $("detail-share").addEventListener("click", () => {
       const url = stationUrl(id);
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2827,6 +2841,44 @@
         $("report-backdrop").classList.remove("open");
         $("listing-backdrop").classList.remove("open");
       }
+    });
+    // One delegated click handler for every data-attribute action in the
+    // app (Phase 4, §19 — CSP): static links in index.html, rendered
+    // links in the home/intelligence views, Leaflet popup buttons and
+    // detail-page buttons all carry data-* attributes instead of inline
+    // onclick handlers, so the Content Security Policy can run without
+    // 'unsafe-inline'. showView goes through window.showView so the
+    // news module's refresh hook (js/news.js) still fires.
+    document.addEventListener("click", (e) => {
+      const vl = e.target.closest("[data-view-link]");
+      if (vl) {
+        e.preventDefault();
+        (window.showView || showView)(vl.dataset.viewLink);
+        return;
+      }
+      const ll = e.target.closest("[data-listing-link]");
+      if (ll) {
+        e.preventDefault();
+        const [lid, ltype] = ll.dataset.listingLink.split("|");
+        openListing(lid, ltype);
+        return;
+      }
+      const qr = e.target.closest("[data-quick-report]");
+      if (qr) {
+        const [qid, qstatus] = qr.dataset.quickReport.split("|");
+        quickReport(qid, qstatus, qr);
+        return;
+      }
+      const os = e.target.closest("[data-open-station]");
+      if (os) {
+        e.preventDefault();
+        openStation(os.dataset.openStation);
+        return;
+      }
+      const orp = e.target.closest("[data-open-report]");
+      if (orp) { openReport(orp.dataset.openReport); return; }
+      const bn = e.target.closest("[data-back-normal]");
+      if (bn) { backToNormal(bn.dataset.backNormal); return; }
     });
     $("station-back").addEventListener("click", () => showView(prevView || "map"));
     // Defaults

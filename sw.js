@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.3.2"; // bumped 19 Nov 2026 — Phase 4: multilingual safety hub (Hausa, Yoruba, Igbo added; translations marked as awaiting native-speaker review). Earlier v3.3.1: admin dashboard + js/admin.js; v3.3.0: operator portal
+const CACHE = "findcng-v3.3.3"; // bumped 19 Nov 2026 — Phase 4: Content Security Policy (script-src 'self', no unsafe-inline) + all inline onclick/onerror handlers converted to data attributes + one delegated listener. Earlier v3.3.2: multilingual safety; v3.3.1: admin dashboard; v3.3.0: operator portal
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
