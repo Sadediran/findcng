@@ -975,6 +975,13 @@
     mapEl.appendChild(el);
     return el;
   }
+  function refreshMapErrorDetail() {
+    const el = $("map-error");
+    if (!el || el.classList.contains("hidden")) return;
+    const s = tileStats.satellite, t = tileStats.street;
+    el.querySelector(".map-error-detail").textContent =
+      `Satellite: ${s.loaded} loaded · ${s.failed} failed. Street: ${t.loaded} loaded · ${t.failed} failed.`;
+  }
   function showMapError() {
     if (!streetFailArmed) return;
     streetFailArmed = false;
@@ -982,12 +989,10 @@
     const el = mapErrorEl();
     if (!el) return;
     mapErrorLoadedAt = tileStats.satellite.loaded + tileStats.street.loaded;
-    const s = tileStats.satellite, t = tileStats.street;
-    el.querySelector(".map-error-detail").textContent =
-      `Satellite: ${s.loaded} loaded · ${s.failed} failed. Street: ${t.loaded} loaded · ${t.failed} failed.`;
     el.querySelector("[data-map-other]").textContent =
       mapLayer === "satellite" ? "Try street" : "Try satellite";
     el.classList.remove("hidden");
+    refreshMapErrorDetail();
   }
   function hideMapError() {
     const el = $("map-error");
@@ -1001,6 +1006,7 @@
     let errors = [];
     layer.on("tileload", () => {
       tileStats[kind].loaded++;
+      refreshMapErrorDetail();
       // Genuine recovery clears the message: 3+ tiles loaded since it
       // appeared (1–2 stragglers from the failed batch do not).
       const el = $("map-error");
@@ -1030,6 +1036,7 @@
         return;
       }
       tileStats[kind].failed++;
+      refreshMapErrorDetail();
       const armed = kind === "satellite" ? tileFallbackArmed : streetFailArmed;
       if (!armed) return;
       const now = Date.now();
