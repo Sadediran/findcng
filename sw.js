@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.5"; // bumped 19 Nov 2026 — one-tap report buttons: ✅ Has gas / 🔴 Out on every refuelling station card and map popup (conversion centres excluded); help text updated
+const CACHE = "findcng-v2.4.6"; // bumped 19 Nov 2026 — WhatsApp share button on the station detail view: shares name, address, live status with its age, and the deep link via wa.me/?text=
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

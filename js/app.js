@@ -977,6 +977,17 @@
     const fav = favs.has(id) ? "★ Saved" : "☆ Save";
     const wa = s.phone ? normalizeNgPhone(s.phone) : null;
     const distText = (userLoc && s.lat && s.lng) ? fmtKm(haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng)) : null;
+    // WhatsApp share (19 Nov 2026): a snapshot message — name, address,
+    // live status with its age when a fresh report exists, and the deep
+    // link. wa.me/?text= opens the share picker, no number needed.
+    const loc = locLabel(s);
+    const addrLine = s.address
+      ? (loc && !s.address.includes(loc) ? s.address + ", " + loc : s.address)
+      : (loc || "");
+    const shareStatus = (r && st !== "unconfirmed")
+      ? `\n${F.STATUS[st].label} (reported ${timeAgo(r.ts)})` : "";
+    const shareHref = "https://wa.me/?text=" + encodeURIComponent(
+      `${s.name}\n${addrLine}${shareStatus}\nLive CNG status: ${stationUrl(id)}`);
     // Photo hero (2.1 contract): entry.photo = {url, attribution} when a
     // real photo of that place exists. When absent there is NO placeholder
     // image — the clean typographic band is the design, not a gap.
@@ -1033,6 +1044,7 @@
       `<div class="detail-actions">` +
         (s.live ? "" : `<button class="fav-btn ${favs.has(id) ? "on" : ""}" id="detail-fav">${fav}</button>`) +
         `<button class="btn outline small" id="detail-share">🔗 Copy link</button>` +
+        `<a class="btn outline small" href="${shareHref}" target="_blank" rel="noopener">💬 Share on WhatsApp</a>` +
       `</div>` +
       (s.live ? "" : `<div class="detail-actions">` +
         `<button class="btn outline small" onclick="openListing('${s.id}','incorrect')">⚠️ Report an incorrect listing</button>` +
