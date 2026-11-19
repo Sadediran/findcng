@@ -8,15 +8,16 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 300), as his Community Development Service (CDS) project.
 
 - **Map + list** of stations & centres nationwide (counts computed from the dataset at build time — see `data/stats.json`; never hardcoded)
-- **Live availability reporting** — one tap, no account; reports expire after 2 hours; one-tap confirm (yes / not sure / no) and “Back to normal”
+- **Live availability reporting** — one tap, no account; reports expire after 2 hours; one-tap confirm (yes / not sure / no) and “Back to normal”; every fresh report carries a confidence indicator (High / Medium / Low / Disputed) computed from freshness + independent confirmations + source, with the honest “why” shown
+- **CNG Intelligence** — national overview (listed vs verified vs live-right-now), state comparison with sorting, infrastructure gaps (labelled as directory gaps, never as proven infrastructure gaps), postcode areas, growth from daily snapshots, data freshness
 - **Outages view** — stations drivers report as finished, right now
 - **Station detail pages** — shareable URLs (`?station=CNG-XXX`), full details in reference order, favourites, listing reports, reliability from report history
 - **NIPOST postcode location** — 6-digit and new 11-character codes, GPS, map tap; Postcode Explorer parses segments, names state/LGA from NIPOST reference data, checks validity against the NIPOST sandbox, and shows nearby stations with distances
 - **Verified-centre directory** — “check your installer” against the Pi-CNG accredited list; two distinct data-driven badges (Officially accredited, Needs re-verification)
 - **Safety hub** — certified-vs-fake, sourced incident table, myth-vs-fact, in English + Pidgin
-- **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, annual savings; vehicle profile remembered on the device
+- **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, daily/monthly/annual savings; editable CNG-use estimate (km per SCM); copy or download the summary as a .txt file; vehicle profile remembered on the device
 - **News page** — dated programme updates, each with its original source
-- **Ask about CNG** — AI chat (Gemini free tier) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports and web search; no sources shown; no chat logs stored
+- **Ask about CNG** — AI chat (Gemini free tier, OpenRouter free backup — verified working 19 Nov 2026) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports, web search, and read-only lookups of named stations in the directory (missing fields answered “Information unavailable”, never invented); no sources shown; no chat logs stored
 - **Privacy page** — retention periods, removal requests (contact TBD)
 - **Official-source directory** — listings come from government and agency sources (the Pi-CNG registers and other public lists); centres do not register themselves
 
@@ -27,6 +28,83 @@ OpenStreetMap street — with automatic fallback to street if the satellite
 tiles fail; the CARTO dark layer was removed in 2.4 because CARTO's keyless
 dark endpoint died), Vercel serverless functions, Supabase (free tier) for reports +
 confirmations + listing reports. Running cost ~₦0/month on free tiers.
+
+## 3.2 (19 Nov 2026) — Phase 3 of the master transformation (§22: Intelligence and reliability)
+
+- **Availability confidence (§8):** every fresh report now shows a
+  confidence chip — High (≤30 min + ≥2 net confirmations), Medium
+  (≤60 min + ≥1 net, or ≤15 min), Low (inside the 2 h window, otherwise),
+  Disputed (more “no” than “yes” votes) — with the honest “why” (age +
+  confirmations + “Community reported”) on the detail page and the home
+  live feed, plus a “✓ Still right?” confirm button per feed item. The
+  detail page re-checks confirmations on load; expired reports get no
+  confidence at all. `api/confirmations.js` gained a batch GET
+  (`?report_ids=a,b,c`, max 20). “Operator confirmed” stays reserved
+  and unused until Phase 4. `api/reports.js` gained a burst guard (6+
+  reports from one reporter hash in 10 min → 429, logged) — the hash is
+  IP-based and unstable through proxies, so the guard is best-effort.
+- **CNG Intelligence dashboard (§11):** the Phase 1 “Coverage & data”
+  view is upgraded in place (old `?view=coverage` links alias to it).
+  Modules: national overview (listed vs verified vs live-right-now, with
+  an explicit note that FindCNG keeps no separate “operational”
+  register); state comparison table (listed / refuelling / conversion /
+  accredited / mapped, sortable); infrastructure gaps — no-data states,
+  thinly listed states, no-refuelling states, unmapped states — with an
+  explicit disclaimer that these are DIRECTORY gaps, not proven
+  infrastructure gaps; postcode areas (17 known 6-digit codes with the
+  count of mapped stations within 25 km and “See stations” buttons);
+  growth from `data/history.json` daily snapshots only (baseline
+  19 Nov 2026: 721 records — a single snapshot is shown honestly as a
+  baseline, never as a trend); data freshness (dataset date, Pi-CNG
+  register dates, live register state, fresh-report counts, newest news
+  date). Every figure is computed from the dataset at build time
+  (`build-data.py` now writes `per_state_detail` and `with_postcode`
+  into `stats.json`); per-state sums reconcile with the totals.
+- **Reporting + moderation (§14):** the listing-report sheet now offers
+  wrong details, wrong coordinates, updated contact, closed, moved,
+  safety concern, and “something else”; a missing-station suggestion
+  flow (station_id `NEW`, details ≥10 chars) is reachable from Help and
+  from the Stations view. Types map onto the four existing DB types with
+  `[Wrong coordinates]` / `[Updated contact]` / `[Safety concern]` /
+  `[Missing station]` tags in the details — no migration needed.
+  Submitters get a reference (full UUID, also saved on the device) and
+  can check its status from Help (“Check a report”, `GET
+  /api/listing-reports?id=` returns public fields only, never the
+  reporter hash). Reporter-agnostic 10-minute dedupe per station+type.
+  Admin gains an availability-moderation panel (recent history, burst
+  flags at 5+/hour, per-row delete) and listing-report delete for
+  spam/test rows; listing detail parses the type tags back into labels.
+- **Savings calculator v2 (§12):** editable “Estimated CNG use (km per
+  SCM)” input (auto-filled kpl×1.1, user override wins until the vehicle
+  or kpl changes), an explicit Monthly saving row, and a Download summary
+  (.txt) button alongside Copy. Maths verified against two hand-computed
+  worked examples (see `scripts/verify-phase3-ui.py`).
+- **AI assistant (§13):** `api/chat.js` now grounds named-station
+  questions in a read-only lookup of `data/stations.json` (gated on a
+  directory-intent regex + ≥2 distinctive name words; missing fields
+  answered “Information unavailable”). The stale “how FindCNG works” KB
+  fact was corrected to the real counts (721 / 134 / 617 / 30 states /
+  576) and now leads with the 721 total so the model quotes it. Tested
+  live with 7 cases incl. refusal-to-invent (see below).
+- **Cleanup:** the two pre-existing “TEST DELETE ME” CNG-001 listing
+  reports were verified as test rows and deleted by id; the admin queue
+  is clean. Saheed’s 3 real reports (CNG-018, CNG-021, CNG-009) were
+  re-verified intact after every test run.
+- **Bugs found by live testing and fixed in this release:** (1) a tap on
+  Copy/Download right after editing a calculator field was swallowed —
+  the blur-triggered re-render replaced the buttons under the tap — so
+  the buttons are now static HTML reading a summary variable; (2) the
+  Intelligence view’s “Live right now” line never updated once reports
+  arrived (reports load after the directory and `refreshStatuses` did
+  not re-render it) — fixed, and the UI check that had passed on the
+  empty state’s wording was tightened to require the “1 station(s)”
+  line.
+- **Tests:** `verify-live.py` extended with 22 Phase 3 checks (60/60
+  pass); `scripts/verify-phase3-ui.py` drives the live site in headless
+  Chromium, mobile + desktop (46 checks, all pass, zero JS errors from
+  app code); `scripts/verify-chat-phase3.py` runs the 7 chat cases
+  (all pass, incl. refusal-to-invent and no-invented-phone). Every test
+  row created was deleted by id afterwards.
 
 ## 3.1 (19 Nov 2026) — Phase 2 of the master transformation
 
