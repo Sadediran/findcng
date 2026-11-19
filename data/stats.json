@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-18",
+ "generated": "2026-11-19",
  "total_records": 721,
  "total_records_label": "Directory records — every station and centre entry in the dataset.",
  "refuelling_locations": 134,
@@ -25,12 +25,12 @@
   "Yobe",
   "Zamfara"
  ],
- "with_coordinates": 466,
+ "with_coordinates": 509,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
-  "exact": 53,
-  "approximate": 330,
-  "town": 83
+  "exact": 83,
+  "approximate": 354,
+  "town": 72
  },
  "coord_precision_label": "Coordinate precision: exact = confirmed place match; approximate = street-level geocode; town = locality centroid only.",
  "with_phone": 18,
