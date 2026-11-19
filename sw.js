@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.3"; // bumped 19 Nov 2026 — conversion verification applied: 64 pins moved, 43 newly tagged, 3 upgraded to exact (509 on the map); all 587 conversion centres checked
+const CACHE = "findcng-v2.4.4"; // bumped 19 Nov 2026 — 16 clear conflicts resolved: 11 refuelling + 5 conversion pins moved to their verified place points (509 on the map, 95 exact); CNG-092 to the Chika forecourt third point
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
