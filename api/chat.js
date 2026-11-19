@@ -32,6 +32,14 @@
 // only when needed. If every model fails, the route still answers 200
 // with a helpful fallback message — the chat never shows a bare error.
 //
+// BACKUP PROVIDER (19 Nov 2026, Saheed's choice): when GROQ_API_KEY is
+// set (free GroqCloud key, no card), Groq answers if the whole Gemini
+// chain fails. Groq is fast (LPU inference, ~2s for a short answer) and
+// its free limits (30 req/min, 1,000 req/day) never bind as a fallback
+// that only runs when Gemini is down. Without the key, the old lite
+// retry runs instead. Adding the key to Vercel needs a redeploy before
+// the functions see it.
+//
 // Env: GEMINI_API_KEY (free Google AI Studio key). Without it the route
 // answers { configured: false } and the app shows "being set up" —
 // graceful, never an error. NO chat logs are stored — no DB writes at all.
@@ -452,17 +460,14 @@ async function askGeminiOnce(apiKey, systemText, contents, model, timeoutMs) {
   return text;
 }
 
-async function askGemini(apiKey, systemText, contents) {
-  // Model fallback chain: lite first, then 3.8-flash; on transient overload
-  // (503/429) OR a timeout, move straight to the next model. Budget:
-  // 2 x 15s + 4s wait + 12s retry + ~5s search stays inside the 60s cap.
+async function askGeminiChain(apiKey, systemText, contents) {
+  // Tries lite, then 3.8-flash; on transient overload (503/429) OR a
+  // timeout, moves straight to the next model. Returns the answer or
+  // throws the last error — the caller decides the next step (Groq, or
+  // the lite retry when Groq is not configured).
   // 18 Nov 2026 ~18:10 WAT: the free tier was so overloaded at peak hours
   // that BOTH models 503'd on about half the requests (Vercel logs show
   // interleaved successes and "high demand" 503s within the same minute).
-  // The 503s come back FAST, so when the chain fails fast on overload,
-  // wait 4s and try the lite model once more — spikes often clear within
-  // seconds. Slow failures (timeouts) never retry.
-  const started = Date.now();
   let lastError = null;
   for (let i = 0; i < MODELS.length; i++) {
     try {
@@ -475,13 +480,40 @@ async function askGemini(apiKey, systemText, contents) {
       break;
     }
   }
-  const elapsed = Date.now() - started;
-  if (lastError && /503|429/.test(lastError.message) && elapsed < 20000) {
-    console.error(`chat retry: chain failed in ${elapsed}ms on overload, retrying lite model once`);
-    await new Promise((r) => setTimeout(r, 4000));
-    return await askGeminiOnce(apiKey, systemText, contents, MODELS[0], 12000);
-  }
   throw lastError || new Error("Gemini request failed");
+}
+
+// --- Groq (free backup, 19 Nov 2026) --------------------------------------
+// OpenAI-compatible chat completions. The same system prompt + history go
+// to Groq, mapped to the OpenAI message shape (Gemini "model" turns
+// become "assistant" turns). gpt-oss-120b reasons before answering, so
+// the token budget covers reasoning plus the ~150-word answer.
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "openai/gpt-oss-120b";
+const GROQ_TIMEOUT_MS = 15000;
+const GROQ_MAX_TOKENS = 2000;
+
+async function askGroq(apiKey, systemText, contents) {
+  const messages = [
+    { role: "system", content: systemText },
+    ...contents.map((t) => ({
+      role: t.role === "model" ? "assistant" : "user",
+      content: t.parts.map((p) => p.text || "").join(""),
+    })),
+  ];
+  const r = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: GROQ_MAX_TOKENS }),
+    signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+  });
+  const body = await r.json().catch(() => null);
+  if (!r.ok) {
+    throw new Error(`Groq ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 300)}`);
+  }
+  const text = String(body?.choices?.[0]?.message?.content || "").trim();
+  if (!text) throw new Error("Groq returned no answer");
+  return text;
 }
 
 // Last resort when every model fails: still answer 200 with a helpful
@@ -513,6 +545,7 @@ export default async function handler(req, res) {
   const history = parseHistory((req.body || {}).history);
   const cngTopic = CNG_TOPIC_RE.test(question);
   const doSearch = needsSearch(question);
+  const groqKey = (process.env.GROQ_API_KEY || "").trim();
   try {
     const [news, searchResults, availability] = await Promise.all([
       recentNews(),
@@ -532,7 +565,33 @@ export default async function handler(req, res) {
         : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own knowledge.";
     const systemText = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general questions from your own knowledge; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}${availability ? "\n\n" + availability : ""}`;
     const contents = [...history, { role: "user", parts: [{ text: question }] }];
-    let answer = await askGemini(apiKey, systemText, contents);
+    // Answer chain: Gemini lite -> Gemini flash -> (Groq if configured, else
+    // one lite retry after a short wait on fast overload). Budget with
+    // Groq: 5s search + 15s + 15s + 15s = 50s; without: 5s + 15s + 15s +
+    // 4s wait + 12s retry = 51s — both inside the 60s function cap.
+    let answer;
+    let provider = "gemini";
+    const geminiStarted = Date.now();
+    try {
+      answer = await askGeminiChain(apiKey, systemText, contents);
+    } catch (geminiError) {
+      const geminiElapsed = Date.now() - geminiStarted;
+      if (groqKey) {
+        console.error(`chat gemini failed (${String(geminiError.message).slice(0, 120)}), trying Groq`);
+        answer = await askGroq(groqKey, systemText, contents);
+        provider = "groq";
+        console.error("chat answered by groq");
+      } else if (/503|429/.test(geminiError.message) && geminiElapsed < 20000) {
+        // No backup provider: the 503s come back FAST, so wait 4s and try
+        // the lite model once more — spikes often clear within seconds.
+        // Slow failures (timeouts) never retry.
+        console.error(`chat retry: chain failed in ${geminiElapsed}ms on overload, retrying lite model once`);
+        await new Promise((r) => setTimeout(r, 4000));
+        answer = await askGeminiOnce(apiKey, systemText, contents, MODELS[0], 12000);
+      } else {
+        throw geminiError;
+      }
+    }
     // The chat shows no sources at all, so no "Sources:" line belongs
     // in the answer text; strip one if the model appended it anyway.
     answer = stripSourcesLine(answer);
@@ -544,14 +603,15 @@ export default async function handler(req, res) {
     return json(res, 200, {
       ok: true,
       answer,
+      provider,
       search_available: searchResults.length > 0,
       configured: true,
     });
   } catch (e) {
     // Log the real cause server-side (status + message only — never the key).
     // Then answer 200 with the helpful fallback, never a bare error —
-    // the chat stays usable even when the AI service is down.
+    // the chat stays usable even when every AI service is down.
     console.error("chat failed:", e && e.message ? e.message : String(e));
-    return json(res, 200, { ok: true, answer: FALLBACK_ANSWER, degraded: true, configured: true });
+    return json(res, 200, { ok: true, answer: FALLBACK_ANSWER, provider: "fallback", degraded: true, configured: true });
   }
 }
