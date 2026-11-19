@@ -89,6 +89,47 @@
     return `<span class="badge ${st}"><span class="dot ${st}"></span>${s.label}${t}</span>`;
   }
   function typeBadge(t) { return `<span class="badge type">${F.TYPE_LABEL[t] || t}</span>`; }
+  // ---------------- availability confidence (Phase 3, §8) ---------------
+  // Every live report is COMMUNITY REPORTED — drivers reporting what they
+  // see. The "Operator confirmed" and "Officially verified" labels are
+  // reserved for the operator portal (Phase 4) and are never used here,
+  // because no operator or official confirmation exists yet.
+  //
+  // Confidence comes from three honest inputs, and the "why" is always
+  // shown next to the level so the user can judge it themselves:
+  //   freshness — how old the report is (reports expire after 2 hours)
+  //   independent confirmations — net yes votes (yes minus no)
+  //   source — always community; it never raises the level on its own
+  // Levels:
+  //   Disputed — more drivers said the report is wrong than right
+  //   High     — reported in the last 30 min AND net confirmations >= 2
+  //   Medium   — reported in the last 60 min with net >= 1, OR reported
+  //              in the last 15 min (a minutes-old report from a driver
+  //              at the station, even unconfirmed)
+  //   Low      — anything else still inside the 2-hour window
+  // A report older than 2 hours has NO confidence at all — it is
+  // unconfirmed, never "low confidence live".
+  function confidenceFor(ageMs, counts, countsLabel) {
+    const mins = ageMs / 60000;
+    const yes = counts ? (counts.yes || 0) : 0;
+    const no = counts ? (counts.no || 0) : 0;
+    const net = yes - no;
+    let level, label;
+    if (counts && no > yes && no >= 1) { level = "disputed"; label = "Disputed report"; }
+    else if (mins <= 30 && net >= 2) { level = "high"; label = "High confidence"; }
+    else if ((mins <= 60 && net >= 1) || mins <= 15) { level = "medium"; label = "Medium confidence"; }
+    else { level = "low"; label = "Low confidence"; }
+    const ageBit = mins < 1 ? "Reported just now" : `Reported ${Math.floor(mins)} min ago`;
+    const confBit = countsLabel || (!counts ? "confirmations not loaded yet"
+      : (yes || no) ? `✓ confirmed by ${yes} driver${yes === 1 ? "" : "s"}${no ? `, ${no} said no` : ""}`
+      : "no confirmations yet");
+    const why = `${ageBit} · ${confBit} · Community reported` +
+      (level === "disputed" ? " — drivers disagree about this report, so treat it with caution" : "");
+    return { level, label, why };
+  }
+  function confidenceChipHtml(conf) {
+    return `<span class="conf-chip conf-${conf.level}">${conf.label}</span>`;
+  }
   // DISTINCT data-driven badges — never one green badge for all. These
   // describe the DATASET (Pi-CNG register match / stale 2024 list), not a
   // submission: centre self-registration was removed in 2.5 (18 Nov 2026).
@@ -194,12 +235,15 @@
   // ---------------- tabs ----------------
   const VIEWS = ["map", "stations", "centres", "station", "outages",
     "safety", "calculator", "news", "help", "privacy", "about", "more", "chat",
-    "coverage", "postcode"];
+    "intelligence", "postcode"];
   // Views that live under the More menu: opening one highlights More in
   // the bottom nav (Phase 1).
   const MORE_VIEWS = ["chat", "safety", "calculator", "news", "help",
-    "privacy", "about", "coverage", "postcode"];
+    "privacy", "about", "intelligence", "postcode"];
   function showView(name) {
+    // Phase 3: the Phase 1 "Coverage & data" view was upgraded into
+    // "CNG Intelligence" — old ?view=coverage links still land there.
+    if (name === "coverage") name = "intelligence";
     if (!VIEWS.includes(name)) name = "map";
     // The detail view with no station open (e.g. a hand-typed
     // ?view=station) used to render empty — send it home instead.
@@ -224,7 +268,7 @@
     if (name === "map" && map) setTimeout(() => { map.invalidateSize(); renderMapMarkers(); }, 60);
     if (name === "outages") renderOutages();
     if (name === "more") renderFavs();
-    if (name === "coverage") renderCoverage();
+    if (name === "intelligence") renderIntelligence();
   }
   window.showView = showView;
   document.querySelectorAll(".bottomnav button").forEach((b) => {
@@ -269,7 +313,7 @@
         renderHomeLive();
         renderHomeCentres();
         renderHomeNews();
-        renderCoverage();
+        renderIntelligence();
         handleDeepLink();
         loadLiveCentres(); // non-blocking: newly listed centres join the lists when they arrive
       })
@@ -439,12 +483,55 @@
     }
     box.innerHTML = fresh.map(([id, r]) => {
       const s = findStation(id);
+      // Confirm button (Phase 3, §8): a driver who sees this report can
+      // confirm it from the feed, without opening the detail page.
+      const confirmBtn = r.id
+        ? `<br><button class="qr-btn qr-yes home-confirm" data-confirm="${r.id}|${id}" aria-label="Confirm this report is still right">✓ Still right?</button>`
+        : "";
       return `<div class="home-live-item" data-id="${id}"><div><b>${esc(s.name)}</b><br>` +
-        `<span class="small">${esc(locLabel(s))}${r.queue ? ` · queue about ${r.queue} min` : ""}</span></div>` +
-        `<div style="text-align:right;flex:0 0 auto">${statusBadge(id, true)}</div></div>`;
+        `<span class="small">${esc(locLabel(s))}${r.queue ? ` · queue about ${r.queue} min` : ""}</span><br>` +
+        `<span class="home-live-conf" data-conf-for="${r.id || ""}"></span></div>` +
+        `<div style="text-align:right;flex:0 0 auto">${statusBadge(id, true)}${confirmBtn}</div></div>`;
     }).join("");
     box.querySelectorAll(".home-live-item").forEach((el) =>
       el.addEventListener("click", () => openStation(el.dataset.id)));
+    box.querySelectorAll(".home-confirm").forEach((btn) =>
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const [rid, sid] = btn.dataset.confirm.split("|");
+        btn.disabled = true;
+        submitConfirmation(rid, sid, "yes");
+      }));
+    loadHomeConfidence(fresh.map(([, r]) => r.id).filter(Boolean));
+  }
+  // Confidence chips on the home feed: one batch request for every fresh
+  // report's confirmation counts (api/confirmations.js ?report_ids=…),
+  // then each item's chip is rendered from its own counts + age.
+  function refreshHomeConfidence() {
+    document.querySelectorAll("[data-conf-for]").forEach((el) => {
+      const rid = el.dataset.confFor;
+      if (!rid) return;
+      const counts = confirmCache.get(rid);
+      if (!counts || counts === "not_open") return;
+      let ageMs = null;
+      reports.forEach((r) => { if (r.id === rid) ageMs = Date.now() - r.ts; });
+      if (ageMs === null) return;
+      const conf = confidenceFor(ageMs, counts);
+      el.innerHTML = confidenceChipHtml(conf) + ` <span class="tiny">${esc(conf.why)}</span>`;
+    });
+  }
+  function loadHomeConfidence(ids) {
+    const missing = [...new Set(ids)].filter((id) => id && !confirmCache.has(id));
+    if (!missing.length) { refreshHomeConfidence(); return; }
+    fetch(`/api/confirmations?report_ids=${encodeURIComponent(missing.join(","))}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j && j.ok && j.counts) {
+          Object.entries(j.counts).forEach(([id, c]) => confirmCache.set(id, c));
+        }
+        refreshHomeConfidence();
+      })
+      .catch(() => { /* confidence is optional; the report still stands */ });
   }
   // C. Conversion centres preview — nearest accredited centres when the
   // user's spot is known, otherwise the honest national counts + CTA.
@@ -513,39 +600,214 @@
     box.querySelectorAll("[data-news]").forEach((el) =>
       el.addEventListener("click", () => showView("news")));
   }
-  // Coverage view — per-state table + no-data states + precision, all
-  // from stats.json (computed at build time). Nothing estimated.
-  function renderCoverage() {
-    const box = $("coverage-body");
+  // ---------------- CNG Intelligence (Phase 3, §11) -------------------
+  // Upgrades the Phase 1 "Coverage & data" view. Every figure is
+  // database-derived — stats.json at build time, stations.json and the
+  // live reports map at runtime, data/history.json snapshots for growth
+  // — nothing estimated, nothing invented. Where the data cannot answer
+  // a question (e.g. "operational" status, or whether a thin state
+  // really lacks infrastructure), the dashboard says so in plain words
+  // instead of filling the gap with a guess.
+  let intelSort = "total-desc";
+  let intelPostcodes = null; // data/postcodes.json, fetched once
+  let intelHistory = null;   // data/history.json, fetched once
+  let intelNewsDate = null;  // newest news item's date, fetched once
+  let intelNewsTried = false;
+
+  function renderIntelligence() {
+    const box = $("intelligence-body");
     if (!box) return;
-    if (!stats) { box.innerHTML = `<p class="small">Loading coverage numbers…</p>`; return; }
-    const perState = stats.per_state || [];
-    const rows = perState.map((r) =>
-      `<tr><td>${esc(r.state)}</td><td>${(r.count || 0).toLocaleString()}</td></tr>`).join("");
+    if (!stats) { box.innerHTML = `<p class="small">Loading intelligence numbers…</p>`; return; }
+    const detail = stats.per_state_detail || [];
     const noData = stats.no_data_states || [];
     const prec = stats.coord_precision || {};
     const noCoords = (stats.total_records || 0) - (stats.with_coordinates || 0);
+    // Live right now — fresh reports only. The reports Map already holds
+    // only in-window reports; expiry is re-checked here too, so a stale
+    // report can never count as live.
+    let freshAvail = 0, freshLow = 0, freshOut = 0;
+    reports.forEach((r) => {
+      if (Date.now() - r.ts > F.REPORT_TTL_MS) return;
+      if (r.status === "available") freshAvail++;
+      else if (r.status === "low") freshLow++;
+      else freshOut++;
+    });
+    const freshTotal = freshAvail + freshLow + freshOut;
+    // Gaps — DIRECTORY gaps, not proven infrastructure gaps (the card
+    // below says so explicitly; a thin directory is not proof of thin
+    // infrastructure, only of unpublished official lists).
+    const thin = detail.filter((d) => d.total <= 2);
+    const noRefuel = detail.filter((d) => d.refuelling === 0);
+    const unmapped = detail.filter((d) => d.with_coords === 0);
+    // State comparison, sorted per the user's choice.
+    const rows = [...detail];
+    if (intelSort === "total-asc") rows.sort((a, b) => a.total - b.total || a.state.localeCompare(b.state));
+    else if (intelSort === "mapped") rows.sort((a, b) => b.pct_mapped - a.pct_mapped || b.total - a.total);
+    else if (intelSort === "az") rows.sort((a, b) => a.state.localeCompare(b.state));
+    else rows.sort((a, b) => b.total - a.total || a.state.localeCompare(b.state));
+    const sortOpts = [
+      ["total-desc", "Most entries first"],
+      ["total-asc", "Fewest entries first"],
+      ["mapped", "Best mapped first"],
+      ["az", "A–Z"],
+    ].map(([v, l]) => `<option value="${v}"${intelSort === v ? " selected" : ""}>${l}</option>`).join("");
     box.innerHTML =
-      `<div class="card"><h3 style="margin-top:0">Directory at a glance</h3>` +
-      `<p style="margin:0"><b>${(stats.total_records || 0).toLocaleString()}</b> records · ` +
-      `<b>${(stats.refuelling_locations || 0).toLocaleString()}</b> refuelling locations · ` +
-      `<b>${(stats.conversion_centres || 0).toLocaleString()}</b> conversion centres.</p>` +
-      `<p style="margin:8px 0 0"><b>${(stats.picng_register_matched || 0).toLocaleString()}</b> conversion centres officially accredited · ` +
+      // A. National overview — listed vs verified vs live, labelled.
+      `<div class="card"><h3 style="margin-top:0">National overview</h3>` +
+      `<p style="margin:0"><b>Listed:</b> ${(stats.total_records || 0).toLocaleString()} records — ` +
+      `<b>${(stats.refuelling_locations || 0).toLocaleString()}</b> refuelling locations and ` +
+      `<b>${(stats.conversion_centres || 0).toLocaleString()}</b> conversion centres across ` +
+      `<b>${stats.states_with_data ?? "—"} of 37</b> states + FCT. (Entries that both sell gas and convert are counted in both groups.)</p>` +
+      `<p style="margin:8px 0 0"><b>Verified:</b> <b>${(stats.picng_register_matched || 0).toLocaleString()}</b> conversion centres officially accredited (Pi-CNG register) · ` +
       `<b>${(stats.picng_refuel_register_matched || 0).toLocaleString()}</b> refuelling locations on the Pi-CNG refuelling register · ` +
       `<b>${(stats.needs_reverification || 0).toLocaleString()}</b> entries need re-verification · ` +
       `<b>${(stats.single_source || 0).toLocaleString()}</b> from a single source.</p>` +
-      `<p class="small" style="margin:8px 0 0">Numbers computed from the dataset on ${esc(stats.generated || "—")}.</p></div>` +
+      `<p style="margin:8px 0 0"><b>Live right now:</b> ${freshTotal ? `<b>${freshTotal}</b> station(s) have a fresh driver report (last 2 hours) — ${freshAvail} available, ${freshLow} low, ${freshOut} finished or closed.` : "no fresh driver report in the last 2 hours — nothing here is presented as live until a driver reports it."}</p>` +
+      `<p class="small" style="margin:8px 0 0">FindCNG does not keep a separate “operational” register — a station is only known to be operating when a driver reports gas there in the last 2 hours. A listed station with no fresh report is unconfirmed, not closed. Directory numbers computed from the dataset on ${esc(stats.generated || "—")}.</p></div>` +
       `<div class="card"><h3 style="margin-top:0">Map pins — how precise?</h3>` +
       `<p style="margin:0"><b>${(prec.exact || 0).toLocaleString()}</b> exact locations · ` +
       `<b>${(prec.approximate || 0).toLocaleString()}</b> approximate · ` +
       `<b>${(prec.town || 0).toLocaleString()}</b> area pins (town centre, not the exact spot) · ` +
       `<b>${noCoords.toLocaleString()}</b> entries have no coordinates yet and appear in the list only.</p></div>` +
-      `<div class="card" style="overflow-x:auto"><h3 style="margin-top:0">Entries by state</h3>` +
-      `<table class="coverage-table"><tr><th>State</th><th>Entries</th></tr>${rows}</table></div>` +
+      // B. State comparison.
+      `<div class="card" style="overflow-x:auto"><h3 style="margin-top:0">State comparison</h3>` +
+      `<div class="field"><label for="intel-sort">Sort states by</label><select id="intel-sort">${sortOpts}</select></div>` +
+      `<table class="coverage-table"><tr><th>State</th><th>Listed</th><th>Refuelling</th><th>Conversion</th><th>Accredited</th><th>Mapped</th></tr>` +
+      rows.map((d) =>
+        `<tr><td>${esc(d.state)}</td><td>${d.total.toLocaleString()}</td><td>${d.refuelling.toLocaleString()}</td>` +
+        `<td>${d.conversion.toLocaleString()}</td><td>${d.accredited.toLocaleString()}</td><td>${d.pct_mapped}%</td></tr>`).join("") +
+      `</table>` +
+      `<p class="small" style="margin:8px 0 0">“Mapped” is the share of that state's listed entries with coordinates — a directory measure, not a measure of the state's real CNG infrastructure.</p></div>` +
+      // C. Infrastructure gaps — verified vs missing, labelled.
+      `<div class="card"><h3 style="margin-top:0">Where the directory is thin</h3>` +
       (noData.length
-        ? `<div class="card"><h3 style="margin-top:0">States with no data yet</h3>` +
-          `<p style="margin:0"><b>${noData.length}</b> states have no entries yet: ${noData.map(esc).join(", ")}. That means no official list has published entries for them — not that they have no CNG infrastructure. New entries come from official government and agency lists as they are published.</p></div>`
-        : `<div class="card"><p style="margin:0">Every state now has at least one entry.</p></div>`);
+        ? `<p style="margin:0"><b>${noData.length} states have no listed entries at all:</b> ${noData.map(esc).join(", ")}.</p>`
+        : `<p style="margin:0">Every state now has at least one entry.</p>`) +
+      (thin.length
+        ? `<p style="margin:8px 0 0"><b>Thinly listed (2 or fewer entries):</b> ${thin.map((d) => `${esc(d.state)} (${d.total})`).join(", ")}.</p>` : "") +
+      (noRefuel.length
+        ? `<p style="margin:8px 0 0"><b>Listed entries but no refuelling location:</b> ${noRefuel.map((d) => esc(d.state)).join(", ")} — conversion centres only.</p>` : "") +
+      (unmapped.length
+        ? `<p style="margin:8px 0 0"><b>No mapped entries at all:</b> ${unmapped.map((d) => esc(d.state)).join(", ")} — every entry there is list-only until coordinates are recorded.</p>` : "") +
+      `<p class="small" style="margin:8px 0 0"><b>Read this carefully:</b> these are gaps in the DIRECTORY — what official lists have published so far. A state with few or no listed entries may still have CNG stations and conversion centres that no official list has published yet. FindCNG cannot verify a real infrastructure gap; only the official registers can. Know a station that is missing? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it →</a></p></div>` +
+      // D. Postcode-area exploration (enriched below).
+      `<div class="card"><h3 style="margin-top:0">Postcode areas</h3><div id="intel-postcode"><p class="small">Loading postcode areas…</p></div></div>` +
+      // E. Infrastructure growth (enriched below).
+      `<div class="card"><h3 style="margin-top:0">Infrastructure growth</h3><div id="intel-growth"><p class="small">Loading growth history…</p></div></div>` +
+      // F. Data freshness (enriched below).
+      `<div class="card"><h3 style="margin-top:0">Data freshness</h3><div id="intel-freshness"><p class="small">Loading freshness…</p></div></div>`;
+    const sortEl = $("intel-sort");
+    if (sortEl) sortEl.addEventListener("change", () => { intelSort = sortEl.value; renderIntelligence(); });
+    enrichIntelPostcode();
+    enrichIntelGrowth();
+    enrichIntelFreshness(freshTotal, freshAvail, freshLow, freshOut);
+  }
+  // D. Postcode areas — the 6-digit codes the app can centre on, with
+  // how many mapped stations sit within 25 km of each district centre.
+  // Distances are haversine from VERIFIED station coordinates; the
+  // postcode centre itself is approximate (see build-data.py).
+  function enrichIntelPostcode() {
+    const box = $("intel-postcode");
+    if (!box) return;
+    const render = () => {
+      if (!intelPostcodes || !intelPostcodes.exact) {
+        box.innerHTML = `<p class="small">Postcode area data could not be loaded — the Postcode Explorer still works for individual codes.</p>`;
+        return;
+      }
+      const codes = Object.entries(intelPostcodes.exact).sort((a, b) => a[0].localeCompare(b[0]));
+      const rows = codes.map(([code, c]) => {
+        const near = stations.filter((s) => s.lat && s.lng &&
+          haversineKm(c.lat, c.lng, s.lat, s.lng) <= 25).length;
+        return { code, place: c.place, lat: c.lat, lng: c.lng, near };
+      });
+      box.innerHTML =
+        `<p style="margin-top:0">The app can centre the map on <b>${rows.length} six-digit postcode areas</b> (district centres, approximate). ` +
+        `<b>${(stats && stats.with_postcode) || 0}</b> directory entries carry a postcode in the dataset. ` +
+        `For the 11-character building postcode, use the <a href="#" onclick="showView('postcode');return false;">Postcode Explorer</a> — it parses the code, names the state and LGA from NIPOST reference data, and checks whether the code is assigned.</p>` +
+        `<table class="coverage-table"><tr><th>Postcode</th><th>Area</th><th>Mapped stations within 25 km</th><th></th></tr>` +
+        rows.map((r) =>
+          `<tr><td>${esc(r.code)}</td><td>${esc(r.place)}</td><td>${r.near}</td>` +
+          `<td><button class="btn small outline intel-nearby" data-lat="${r.lat}" data-lng="${r.lng}" data-place="${esc(r.place)}" data-code="${esc(r.code)}">See stations</button></td></tr>`).join("") +
+        `</table>`;
+      box.querySelectorAll(".intel-nearby").forEach((b) =>
+        b.addEventListener("click", () => {
+          setUserLoc(parseFloat(b.dataset.lat), parseFloat(b.dataset.lng),
+            b.dataset.place + " — postcode " + b.dataset.code);
+          showView("map");
+        }));
+    };
+    if (intelPostcodes) { render(); return; }
+    fetch("data/postcodes.json").then((r) => r.json()).then((j) => {
+      intelPostcodes = j; render();
+    }).catch(() => {
+      box.innerHTML = `<p class="small">Postcode area data could not be loaded — the Postcode Explorer still works for individual codes.</p>`;
+    });
+  }
+  // E. Growth — from recorded daily snapshots ONLY (data/history.json,
+  // appended by build-data.py). With a single snapshot the dashboard
+  // shows the baseline honestly and says the trend is still forming —
+  // it never draws a trend from one point.
+  function enrichIntelGrowth() {
+    const box = $("intel-growth");
+    if (!box) return;
+    const render = () => {
+      if (!intelHistory || !intelHistory.length) {
+        box.innerHTML = `<p class="small">No growth snapshots recorded yet — the daily rebuild records the first one, and the trend appears as days accumulate.</p>`;
+        return;
+      }
+      const latest = intelHistory.slice(-5).reverse();
+      const first = intelHistory[0];
+      box.innerHTML =
+        (intelHistory.length === 1
+          ? `<p style="margin-top:0"><b>Baseline recorded ${esc(fmtDate(first.date))}.</b> Growth tracking starts here — the daily rebuild records a new snapshot each day, and change will show in this table as it accumulates. No trend is drawn from a single day.</p>`
+          : `<p style="margin-top:0">Snapshots recorded by the daily rebuild — the latest ${latest.length} of ${intelHistory.length} day(s). Change since the ${esc(fmtDate(first.date))} baseline: <b>${(intelHistory[intelHistory.length - 1].total_records - first.total_records) >= 0 ? "+" : ""}${(intelHistory[intelHistory.length - 1].total_records - first.total_records).toLocaleString()}</b> records, <b>${(intelHistory[intelHistory.length - 1].with_coordinates - first.with_coordinates) >= 0 ? "+" : ""}${(intelHistory[intelHistory.length - 1].with_coordinates - first.with_coordinates).toLocaleString()}</b> mapped.</p>`) +
+        `<div style="overflow-x:auto"><table class="coverage-table"><tr><th>Date</th><th>Records</th><th>Refuelling</th><th>Conversion</th><th>Accredited</th><th>States</th><th>Mapped</th></tr>` +
+        latest.map((h) =>
+          `<tr><td>${esc(fmtDate(h.date))}</td><td>${(h.total_records || 0).toLocaleString()}</td>` +
+          `<td>${(h.refuelling_locations || 0).toLocaleString()}</td><td>${(h.conversion_centres || 0).toLocaleString()}</td>` +
+          `<td>${(h.picng_register_matched || 0).toLocaleString()}</td><td>${h.states_with_data ?? "—"}</td>` +
+          `<td>${(h.with_coordinates || 0).toLocaleString()}</td></tr>`).join("") +
+        `</table></div>`;
+    };
+    if (intelHistory) { render(); return; }
+    fetch("data/history.json").then((r) => r.json()).then((j) => {
+      intelHistory = Array.isArray(j) ? j : []; render();
+    }).catch(() => {
+      box.innerHTML = `<p class="small">Growth history could not be loaded — the directory itself is unaffected.</p>`;
+    });
+  }
+  // F. Data freshness — when each dataset was last updated, in one place.
+  function enrichIntelFreshness(freshTotal, freshAvail, freshLow, freshOut) {
+    const box = $("intel-freshness");
+    if (!box) return;
+    const render = () => {
+      const liveLine = liveState === "ok"
+        ? `Pi-CNG live register checked ${liveFetchedAt ? liveFetchedAt.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) : ""} — ${liveCentres.length} newly listed centre(s) since the last daily update.`
+        : liveState === "unavailable"
+          ? "Pi-CNG live register could not be reached — showing the stored list from the last daily update."
+          : "Pi-CNG live register check in progress…";
+      box.innerHTML =
+        `<p style="margin:0"><b>Directory dataset:</b> rebuilt ${esc(stats.generated ? fmtDate(stats.generated) : "—")} from the official registers and public lists.</p>` +
+        `<p style="margin:8px 0 0"><b>Pi-CNG accredited centres register:</b> checked ${esc(F.REGISTER_DATES.centres)}. <b>Pi-CNG refuelling register:</b> updated ${esc(F.REGISTER_DATES.refuel)}.</p>` +
+        `<p style="margin:8px 0 0"><b>Live register:</b> ${esc(liveLine)}</p>` +
+        `<p style="margin:8px 0 0"><b>Live availability:</b> ${freshTotal ? `${freshTotal} fresh report(s) in the last 2 hours (${freshAvail} available, ${freshLow} low, ${freshOut} finished or closed).` : "no fresh report in the last 2 hours."} Reports expire after 2 hours and are never shown cached as live.</p>` +
+        `<p style="margin:8px 0 0"><b>News:</b> ${intelNewsDate ? `newest item ${esc(fmtDate(intelNewsDate))}.` : intelNewsTried ? "could not be reached just now." : "loading…"}</p>` +
+        `<p class="small" style="margin:8px 0 0"><b>Postcode reference data</b> (states, LGAs, districts, areas) is checked live against NIPOST each time you use the Postcode Explorer — it is never stored here.</p>`;
+    };
+    render();
+    if (intelNewsTried) return;
+    intelNewsTried = true;
+    const fromModule = window.FindCNGNews && window.FindCNGNews.getItems && window.FindCNGNews.getItems();
+    if (fromModule && fromModule.length && fromModule[0].published_at) {
+      intelNewsDate = fromModule[0].published_at;
+      render();
+      return;
+    }
+    fetch("/api/news?limit=1").then((r) => r.json()).then((j) => {
+      const items = (j && j.items) || [];
+      if (items.length && items[0].published_at) intelNewsDate = items[0].published_at;
+      render();
+    }).catch(() => render());
   }
 
   // ---------------- reports (live only — no demo mode) ----------------
@@ -1498,7 +1760,8 @@
         `${r.compressor === true ? " · compressor working" : r.compressor === false ? " · compressor faulty" : ""}</p>` +
         `<p class="small">Is this still right?</p>` +
         `<div class="confirm-row" id="confirm-row"><button data-vote="yes">✓ Yes</button><button data-vote="unsure">? Not sure</button><button data-vote="no">✗ No</button></div>` +
-        `<p class="small" id="confirm-counts"></p>`;
+        `<p class="small" id="confirm-counts"></p>` +
+        `<p class="small" id="confidence-line"></p>`;
     } else {
       statusBlock = `<p class="small">No gas report in the last 2 hours. ${s.type === "conversion" ? "Conversion centres don't sell gas — but you can still report whether the centre is open." : "Be the first to report it."}</p>`;
     }
@@ -1561,24 +1824,43 @@
     if (!el) return;
     if (cached === "not_open") {
       el.textContent = "Confirmations aren't open yet — the database table is still being set up.";
+      renderConfidenceLine(null, "confirmations aren't open yet");
       return;
     }
     if (cached) { renderConfirmCounts(cached); return; }
     fetch(`/api/confirmations?report_id=${encodeURIComponent(reportId)}`)
       .then((r) => r.json())
       .then((j) => {
-        if (j && j.error === "not_open") { confirmCache.set(reportId, "not_open"); el.textContent = "Confirmations aren't open yet — the database table is still being set up."; return; }
+        if (j && j.error === "not_open") {
+          confirmCache.set(reportId, "not_open");
+          el.textContent = "Confirmations aren't open yet — the database table is still being set up.";
+          renderConfidenceLine(null, "confirmations aren't open yet");
+          return;
+        }
         if (j && j.ok) { confirmCache.set(reportId, j.counts); renderConfirmCounts(j.counts); }
       })
       .catch(() => { /* counts are optional */ });
   }
   function renderConfirmCounts(c) {
     const el = $("confirm-counts");
-    if (!el) return;
-    const total = (c.yes || 0) + (c.unsure || 0) + (c.no || 0);
-    el.textContent = total
-      ? `Confirmed by other drivers: ✓ ${c.yes} · ? ${c.unsure} · ✗ ${c.no}`
-      : "No confirmations yet — be the first.";
+    if (el) {
+      const total = (c.yes || 0) + (c.unsure || 0) + (c.no || 0);
+      el.textContent = total
+        ? `Confirmed by other drivers: ✓ ${c.yes} · ? ${c.unsure} · ✗ ${c.no}`
+        : "No confirmations yet — be the first.";
+    }
+    renderConfidenceLine(c);
+  }
+  // Confidence line on the detail page — the level chip plus the honest
+  // "why" (age + confirmations + source). Only rendered once the counts
+  // are known (or known-unavailable); an empty line stays empty rather
+  // than guessing.
+  function renderConfidenceLine(counts, countsLabel) {
+    const line = $("confidence-line");
+    const r = currentStation ? reports.get(currentStation) : null;
+    if (!line || !r) return;
+    const conf = confidenceFor(Date.now() - r.ts, counts, countsLabel);
+    line.innerHTML = confidenceChipHtml(conf) + ` <span>${esc(conf.why)}</span>`;
   }
   function submitConfirmation(reportId, stationId, vote) {
     fetch("/api/confirmations", {
@@ -1596,6 +1878,7 @@
         if (j && j.ok) {
           confirmCache.set(reportId, j.counts);
           renderConfirmCounts(j.counts);
+          refreshHomeConfidence(); // a feed confirm updates the feed chip too
           document.querySelectorAll("#confirm-row button").forEach((b) => {
             b.className = "";
             if (b.dataset.vote === vote) b.classList.add("sel-" + vote);
@@ -1746,17 +2029,63 @@
   }
   window.quickReport = quickReport;
 
-  // ---------------- listing reports ----------------
+  // ---------------- listing reports (Phase 3, §14) ------------------
+  // Types: incorrect | coordinates | contact | closed | moved | safety |
+  // missing | other. "missing" suggests a station that is not listed yet
+  // (station_id "NEW") — opened from Help, the Stations tab and the
+  // Intelligence gaps card, not from a station page. Newer types are
+  // stored under the closest original DB type with a tag in the details
+  // (see api/listing-reports.js); listingTypeLabel renders the tag back.
+  function listingTypeLabel(reportType, details) {
+    const d = details || "";
+    if (d.startsWith("[Wrong coordinates]")) return "Wrong coordinates";
+    if (d.startsWith("[Updated contact]")) return "Updated contact details";
+    if (d.startsWith("[Safety concern]")) return "Safety concern";
+    if (d.startsWith("[Missing station]")) return "Missing station";
+    return { incorrect: "Incorrect details", closed: "Closed", moved: "Moved", other: "Other" }[reportType] || reportType;
+  }
+  function updateListingDetailsHint() {
+    const type = (document.querySelector('input[name="listing-type"]:checked') || {}).value || "other";
+    const label = $("listing-details-label");
+    const input = $("listing-details");
+    if (!label || !input) return;
+    if (type === "missing") {
+      label.textContent = "Station details — required";
+      input.placeholder = "Name, address and state — e.g. XYZ Filling Station, 12 Allen Avenue, Ikeja, Lagos. The moderator checks it against official lists before adding it — nothing is published unverified.";
+    } else if (type === "coordinates") {
+      label.textContent = "Details — what is wrong with the location?";
+      input.placeholder = "e.g. The pin is in the wrong place — the station is actually at… (paste coordinates from your maps app if you have them)";
+    } else if (type === "contact") {
+      label.textContent = "Updated contact details";
+      input.placeholder = "e.g. The correct phone number is 0803…";
+    } else if (type === "safety") {
+      label.textContent = "Details — what is the safety concern?";
+      input.placeholder = "e.g. Staff were filling a cooking-gas cylinder / a cylinder on display looks welded…";
+    } else {
+      label.textContent = "Details — optional";
+      input.placeholder = "e.g. The phone number is wrong — the correct one is…";
+    }
+  }
   function openListing(id, type) {
-    const s = stations.find((x) => x.id === id);
-    if (!s) return;
-    listingStation = id;
-    $("listing-title").textContent = "Report: " + s.name;
-    document.querySelectorAll('input[name="listing-type"]').forEach((r) => {
-      r.checked = r.value === type;
+    const isNew = id === "NEW";
+    const s = isNew ? null : stations.find((x) => x.id === id);
+    if (!isNew && !s) return;
+    listingStation = isNew ? "NEW" : id;
+    $("listing-title").textContent = isNew ? "Suggest a missing station" : "Report: " + s.name;
+    // The "missing" type only makes sense when suggesting a new place;
+    // the other types only make sense for an existing listing.
+    document.querySelectorAll("[data-lr-row]").forEach((row) => {
+      row.classList.toggle("hidden",
+        isNew ? row.dataset.lrRow !== "missing" : row.dataset.lrRow === "missing");
     });
+    document.querySelectorAll('input[name="listing-type"]').forEach((r) => {
+      r.checked = r.value === (type || (isNew ? "missing" : "incorrect"));
+    });
+    updateListingDetailsHint();
     $("listing-details").value = "";
     $("listing-msg").classList.add("hidden");
+    $("listing-form").classList.remove("hidden");
+    $("listing-success").classList.add("hidden");
     $("listing-backdrop").classList.add("open");
   }
   window.openListing = openListing;
@@ -1764,6 +2093,11 @@
     const msg = $("listing-msg");
     const type = (document.querySelector('input[name="listing-type"]:checked') || {}).value || "other";
     const details = $("listing-details").value.trim();
+    if (listingStation === "NEW" && details.length < 10) {
+      msg.textContent = "Please name the station, its address and its state — the moderator needs those to check it.";
+      msg.className = "notice err"; msg.classList.remove("hidden");
+      return;
+    }
     fetch("/api/listing-reports", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1776,9 +2110,17 @@
           msg.className = "notice"; msg.classList.remove("hidden");
           return;
         }
-        if (j && j.ok) {
-          $("listing-backdrop").classList.remove("open");
-          toast("Thank you — a moderator will review this listing.");
+        if (j && j.ok && j.id) {
+          // Submission tracking (§14): the reference is shown in the
+          // sheet and saved on this device, so the submitter can check
+          // the report's status later (Help → Check a report).
+          try { localStorage.setItem("findcng_last_lr", j.id); } catch { /* ignore */ }
+          $("listing-form").classList.add("hidden");
+          $("listing-success-note").textContent = j.duplicate
+            ? "This was already reported — a moderator is reviewing it. Your reference:"
+            : "Thank you — a moderator will review this. Your reference:";
+          $("listing-ref").value = j.id;
+          $("listing-success").classList.remove("hidden");
         } else {
           throw new Error((j && j.error) || "failed");
         }
@@ -1786,6 +2128,38 @@
       .catch(() => {
         msg.textContent = "Couldn't reach the server — try again. Your report was NOT saved.";
         msg.className = "notice err"; msg.classList.remove("hidden");
+      });
+  }
+  // Submission tracking (§14): check a listing report's status by its
+  // reference. The API returns public fields only — never the reporter's
+  // fingerprint.
+  function checkListingStatus() {
+    const input = $("lr-check-input");
+    const out = $("lr-check-result");
+    if (!input || !out) return;
+    const id = (input.value || "").trim();
+    if (!id) {
+      out.innerHTML = `<p class="small">Enter the reference shown when you sent the report — it is also saved on this device if you sent it from here.</p>`;
+      return;
+    }
+    out.innerHTML = `<p class="small">Checking…</p>`;
+    fetch(`/api/listing-reports?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json().then((j) => ({ status: r.status, body: j })))
+      .then(({ status, body }) => {
+        if (status === 404 || !body || !body.ok) {
+          out.innerHTML = `<p class="notice err">No report with that reference — check it and try again. The reference is the long code shown when you sent the report.</p>`;
+          return;
+        }
+        const r = body.report;
+        const what = r.station_id === "NEW" ? "Suggested new station"
+          : (findStation(r.station_id) ? findStation(r.station_id).name : r.station_id);
+        out.innerHTML = `<p style="margin:0"><b>${esc(what)}</b> — ${esc(listingTypeLabel(r.report_type, r.details))}<br>` +
+          `Status: <b>${esc(r.status)}</b> · reported ${esc(fmtDate(r.reported_at))}` +
+          (r.resolution_note ? `<br>Moderator note: ${esc(r.resolution_note)}` : "") +
+          (r.status === "open" ? `<br><span class="small">A moderator reviews open reports in turn — nothing is published from a report until a human checks it.</span>` : "") + `</p>`;
+      })
+      .catch(() => {
+        out.innerHTML = `<p class="notice err">Could not reach the server — try again.</p>`;
       });
   }
 
@@ -1797,17 +2171,24 @@
   // NOT part of the planner and stay.
 
   // ---------------- calculator ----------------
+  // Phase 3 (§12): CNG consumption is now its own editable input (km per
+  // SCM), auto-filled from km/litre × 1.1 (1 SCM ≈ the energy of ~1.1
+  // litres of petrol) and changeable by the user — a car that does
+  // better or worse on CNG than the estimate can say so. Editing the
+  // km/litre or the vehicle resets it to the estimate.
+  let kmpscmEdited = false;
   function calc() {
     const v = F.VEHICLES[$("calc-vehicle").value];
     const kmDay = Math.max(0, parseFloat($("calc-km").value) || 0);
     const days = Math.max(1, Math.min(31, parseInt($("calc-days").value, 10) || 26));
     const kpl = Math.max(1, parseFloat($("calc-kpl").value) || v.kmPerLitre);
+    const kmpscm = Math.max(0.5, parseFloat($("calc-kmpscm").value) || kpl * F.SCM_PER_LITRE_EQUIV);
     const petrol = Math.max(0, parseFloat($("calc-petrol").value) || F.PRICES.petrolPerLitre);
     const cng = Math.max(0, parseFloat($("calc-cng").value) || v.cngPrice);
     const cost = Math.max(0, parseFloat($("calc-cost").value) || 0);
     const kmMonth = kmDay * days;
     const litres = kmMonth / kpl;
-    const scm = kmMonth / (kpl * F.SCM_PER_LITRE_EQUIV);
+    const scm = kmMonth / kmpscm;
     const petrolCost = litres * petrol;
     const cngCost = scm * cng;
     const saving = Math.max(0, petrolCost - cngCost);
@@ -1825,6 +2206,7 @@
       `<div class="calc-row"><span>Petrol cost / month</span><b>${naira(petrolCost)}</b></div>` +
       `<div class="calc-row"><span>CNG cost / month</span><b>${naira(cngCost)}</b></div>` +
       `<div class="calc-row"><span>Daily saving</span><b>${naira(saving / days)}</b></div>` +
+      `<div class="calc-row"><span>Monthly saving</span><b>${naira(saving)}</b></div>` +
       `<div class="calc-row"><span>Annual saving</span><b>${naira(annual)}</b></div>` +
       `<div class="calc-row"><span>Distance / month</span><b>${kmMonth.toLocaleString()} km</b></div>` +
       `<div class="calc-row"><span>Petrol needed</span><b>${litres.toFixed(0)} litres</b></div>` +
@@ -1832,17 +2214,36 @@
       `<div class="calc-row payback"><span>Conversion pays for itself in</span><b>${payback}</b></div>` +
       `</div><p class="small">${cost > 0 ? "Payback uses the conversion cost you entered (" + naira(cost) + "). " : esc(v.convLabel) + " "}Drivers report saving 50–75% on fuel in real life. ` +
       `This is fuel cost only — it does not count time spent queuing or extra plug/coil maintenance. ` +
-      `1 SCM of CNG ≈ the energy of ~1.1 litres of petrol (estimate).</p>` +
-      `<button class="btn outline" id="calc-copy" style="margin-top:4px">📋 Copy my summary</button>`;
+      `CNG use is ${kmpscm.toFixed(1)} km per SCM (estimate — change it above if your car does better or worse on CNG).</p>` +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn outline" id="calc-copy" style="margin-top:4px">📋 Copy my summary</button>` +
+      `<button class="btn outline" id="calc-download" style="margin-top:4px">⬇ Download summary (.txt)</button></div>`;
+    const summaryText = () =>
+      `My CNG savings estimate (FindCNG Nigeria)\n` +
+      `Vehicle: ${v.label} · ${kmDay} km/day × ${days} days = ${kmMonth.toLocaleString()} km/month\n` +
+      `Petrol use: ${kpl} km/litre (${litres.toFixed(0)} litres/month at ₦${petrol}/litre) = ${naira(petrolCost)}/month\n` +
+      `CNG use: ${kmpscm.toFixed(1)} km/SCM (${scm.toFixed(0)} SCM/month at ₦${cng}/SCM) = ${naira(cngCost)}/month\n` +
+      `Saving: ${naira(saving)}/month (${naira(saving / days)}/day, ${naira(annual)}/year, ${pct}% cheaper)\n` +
+      `Payback: ${payback}${cost > 0 ? ` (conversion cost ${naira(cost)})` : ""}\n` +
+      `Prices as reported ${F.PRICES.priceDate}. This is an estimate, not a guarantee — your car and your mileage change it.\n` +
+      `Calculated at https://findcng.vercel.app/?view=calculator`;
     const copyBtn = $("calc-copy");
     if (copyBtn) copyBtn.addEventListener("click", () => {
-      const text = `My CNG savings estimate (FindCNG Nigeria)\n` +
-        `Petrol: ${naira(petrolCost)}/month · CNG: ${naira(cngCost)}/month\n` +
-        `Saving: ${naira(saving)}/month (${naira(saving / days)}/day, ${naira(annual)}/year, ${pct}% cheaper)\n` +
-        `Payback: ${payback} · ${kmMonth.toLocaleString()} km/month · Prices: petrol ₦${petrol}/L, CNG ₦${cng}/SCM (${F.PRICES.priceDate}) — an estimate, not a guarantee.`;
+      const text = summaryText();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(() => toast("Summary copied — paste it anywhere.")).catch(() => toast(text));
       } else { toast(text); }
+    });
+    const dlBtn = $("calc-download");
+    if (dlBtn) dlBtn.addEventListener("click", () => {
+      const blob = new Blob([summaryText()], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "findcng-savings-summary.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast("Summary downloaded.");
     });
     saveVehicleProfile();
   }
@@ -1863,12 +2264,28 @@
       if (p.km) $("calc-km").value = p.km;
       if (p.days) $("calc-days").value = p.days;
       if (p.cost) $("calc-cost").value = p.cost;
+      // A restored vehicle must bring its own km/litre, CNG price and
+      // km/SCM with it — otherwise a saved "bus" silently calculated
+      // with the car's defaults (pre-existing bug, fixed Phase 3).
+      if (p.vehicle && F.VEHICLES[p.vehicle]) calcVehicleChange();
     } catch { /* ignore */ }
   }
   function calcVehicleChange() {
     const v = F.VEHICLES[$("calc-vehicle").value];
     $("calc-kpl").value = v.kmPerLitre;
     $("calc-cng").value = v.cngPrice;
+    kmpscmEdited = false;
+    $("calc-kmpscm").value = (v.kmPerLitre * F.SCM_PER_LITRE_EQUIV).toFixed(1);
+    calc();
+  }
+  // km/litre changed: the CNG estimate follows it (× 1.1) unless the
+  // user has typed their own km/SCM — their own number wins until the
+  // vehicle or km/litre changes again.
+  function calcKplChange() {
+    if (!kmpscmEdited) {
+      const kpl = Math.max(1, parseFloat($("calc-kpl").value) || F.VEHICLES.car.kmPerLitre);
+      $("calc-kmpscm").value = (kpl * F.SCM_PER_LITRE_EQUIV).toFixed(1);
+    }
     calc();
   }
 
@@ -1912,6 +2329,7 @@
       }
       return;
     }
+    if (view === "coverage" || hash === "coverage") { showView("intelligence"); return; }
     if (view && VIEWS.includes(view) && view !== "map") { showView(view); return; }
     if (hash && VIEWS.includes(hash) && hash !== "map") showView(hash);
   }
@@ -1994,13 +2412,37 @@
     $("centre-state-filter").addEventListener("change", () => { centresShown = 50; renderCentres(); });
     $("centre-more").addEventListener("click", () => { centresShown += 50; renderCentres(); });
     // Calculator
-    ["calc-vehicle", "calc-km", "calc-days", "calc-kpl", "calc-petrol", "calc-cng", "calc-cost"].forEach((id) => {
-      $(id).addEventListener("input", id === "calc-vehicle" ? calcVehicleChange : calc);
-      $(id).addEventListener("change", id === "calc-vehicle" ? calcVehicleChange : calc);
+    ["calc-vehicle", "calc-km", "calc-days", "calc-kpl", "calc-kmpscm", "calc-petrol", "calc-cng", "calc-cost"].forEach((id) => {
+      const handler = id === "calc-vehicle" ? calcVehicleChange
+        : id === "calc-kpl" ? calcKplChange
+        : id === "calc-kmpscm" ? () => { kmpscmEdited = true; calc(); }
+        : calc;
+      $(id).addEventListener("input", handler);
+      $(id).addEventListener("change", handler);
     });
     // Sheets
     $("report-submit").addEventListener("click", submitReport);
     $("listing-submit").addEventListener("click", submitListing);
+    document.querySelectorAll('input[name="listing-type"]').forEach((r) =>
+      r.addEventListener("change", updateListingDetailsHint));
+    $("listing-success-close").addEventListener("click", () => $("listing-backdrop").classList.remove("open"));
+    $("listing-ref-copy").addEventListener("click", () => {
+      const ref = $("listing-ref").value;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ref).then(() => toast("Reference copied.")).catch(() => toast(ref));
+      } else { toast(ref); }
+    });
+    // Submission tracking (Help → Check a report): the last reference
+    // sent from this device is filled in automatically.
+    const lrCheckBtn = $("lr-check-go");
+    if (lrCheckBtn) {
+      lrCheckBtn.addEventListener("click", checkListingStatus);
+      $("lr-check-input").addEventListener("keydown", (e) => { if (e.key === "Enter") checkListingStatus(); });
+      try {
+        const last = localStorage.getItem("findcng_last_lr");
+        if (last) $("lr-check-input").value = last;
+      } catch { /* ignore */ }
+    }
     $("report-backdrop").addEventListener("click", (e) => { if (e.target === $("report-backdrop")) $("report-backdrop").classList.remove("open"); });
     $("listing-backdrop").addEventListener("click", (e) => { if (e.target === $("listing-backdrop")) $("listing-backdrop").classList.remove("open"); });
     $("report-close").addEventListener("click", () => $("report-backdrop").classList.remove("open"));
@@ -2018,6 +2460,7 @@
     $("calc-petrol").value = F.PRICES.petrolPerLitre;
     $("calc-cng").value = F.PRICES.cngPerScmCar;
     $("calc-kpl").value = F.VEHICLES.car.kmPerLitre;
+    $("calc-kmpscm").value = (F.VEHICLES.car.kmPerLitre * F.SCM_PER_LITRE_EQUIV).toFixed(1);
     loadVehicleProfile();
     $("price-note").textContent = F.PRICES.priceNote + " Prices as of " + F.PRICES.priceDate + ".";
     calc();

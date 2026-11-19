@@ -184,6 +184,7 @@
   <p class="result-count" id="station-count"></p>
   <div id="station-results"></div>
   <button class="btn outline hidden" id="station-more">Show more</button>
+  <p class="small" style="margin-top:14px">Know a CNG station that is not listed here? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it →</a> A moderator checks it against official lists before adding it.</p>
   <p class="small" id="nodata-note" style="margin-top:14px"></p>
 </section>
 
@@ -254,11 +255,11 @@
   </div>
 </section>
 
-<!-- ============ COVERAGE ============ -->
-<section id="view-coverage" class="view">
-  <h2>Coverage &amp; data</h2>
-  <p class="lede">What the directory actually holds — computed from the dataset, never estimated. A state with no listed stations is not the same as a state with no CNG infrastructure: it means no official list has published entries for it yet.</p>
-  <div id="coverage-body"><p class="small">Loading coverage numbers…</p></div>
+<!-- ============ CNG INTELLIGENCE ============ -->
+<section id="view-intelligence" class="view">
+  <h2>CNG Intelligence</h2>
+  <p class="lede">What Nigeria's CNG infrastructure looks like in the data — every figure computed from the directory, never estimated. A state with no listed stations is not the same as a state with no CNG infrastructure: it means no official list has published entries for it yet.</p>
+  <div id="intelligence-body"><p class="small">Loading intelligence numbers…</p></div>
   <p class="small">Coordinates are never guessed — an entry without coordinates appears in the list with its address only. LGA data from the Pi-CNG register is unreliable, so this app does not use LGA anywhere.</p>
 </section>
 
@@ -364,6 +365,10 @@
       <input type="number" id="calc-kpl" value="10" min="1" step="0.5">
     </div>
     <div class="field">
+      <label for="calc-kmpscm">Your estimated CNG use (km per SCM) <span class="hint">— auto-filled from your km/litre × 1.1 (1 SCM ≈ the energy of ~1.1 litres of petrol); change it if your car does better or worse on CNG</span></label>
+      <input type="number" id="calc-kmpscm" value="11" min="0.5" step="0.1">
+    </div>
+    <div class="field">
       <label for="calc-petrol">Petrol price (₦ per litre)</label>
       <input type="number" id="calc-petrol" value="1370" min="0" step="1">
     </div>
@@ -455,7 +460,20 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
-    <p style="margin:0">Open the station and tap “Report an incorrect listing” (or “Report a closure”). A moderator reviews it. Listing reports open once the database table is set up — until then the app will tell you plainly that they are not open yet.</p>
+    <p style="margin:0">Open the station and tap “Report an incorrect listing” (or “Report a closure”). You can flag wrong details, a wrong map pin, updated contact details, a closure, a move, or a safety concern — a moderator reviews every report. Listing reports open once the database table is set up — until then the app will tell you plainly that they are not open yet.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Check a report you sent</h3>
+    <p class="small" style="margin-top:0">When you send a listing report, the app shows you a reference. Enter it here to see whether a moderator has reviewed it yet. The last reference sent from this device is filled in for you.</p>
+    <div class="locbar" style="margin-top:8px">
+      <input type="text" id="lr-check-input" placeholder="Your reference — e.g. 9f2c…" aria-label="Listing report reference">
+      <button class="btn small" id="lr-check-go">Check</button>
+    </div>
+    <div id="lr-check-result"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">A station is missing from the list</h3>
+    <p style="margin:0">Know a CNG station or conversion centre that is not listed? <a href="#" onclick="openListing('NEW','missing');return false;">Suggest it here</a> — give its name, address and state, and a moderator will check it against official lists. Nothing is published unverified.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">How do I reach the team?</h3>
@@ -545,7 +563,7 @@
   <div class="card menu">
     <button class="menu-item" onclick="showView('chat')">💬 Ask anything <span>Plain answers — CNG, the app, or anything else</span></button>
     <button class="menu-item" onclick="showView('postcode')">✉️ Postcode explorer <span>Check a 6-digit or 11-character postcode</span></button>
-    <button class="menu-item" onclick="showView('coverage')">📊 Coverage &amp; data <span>Stations by state, what is verified, what is missing</span></button>
+    <button class="menu-item" onclick="showView('intelligence')">📊 CNG Intelligence <span>National overview, state comparison, gaps, growth, data freshness</span></button>
   </div>
   <h3 class="menu-group">Learn &amp; save</h3>
   <div class="card menu">
@@ -608,20 +626,38 @@
     <div class="grab"></div>
     <button class="close-x" id="listing-close" aria-label="Close">×</button>
     <h2 id="listing-title">Report this listing</h2>
-    <p class="small">Tell the moderator what is wrong. Nothing is published from this — a human reviews it.</p>
-    <div class="field">
-      <label>What is wrong?</label>
-      <label class="radio-row"><input type="radio" name="listing-type" value="incorrect" checked> The details are incorrect (name, address, phone)</label>
-      <label class="radio-row"><input type="radio" name="listing-type" value="closed"> This station / centre is closed for good</label>
-      <label class="radio-row"><input type="radio" name="listing-type" value="moved"> It has moved to a different address</label>
-      <label class="radio-row"><input type="radio" name="listing-type" value="other"> Something else</label>
+    <div id="listing-form">
+      <p class="small">Tell the moderator what is wrong. Nothing is published from this — a human reviews it.</p>
+      <div class="field">
+        <label>What is wrong?</label>
+        <label class="radio-row" data-lr-row="incorrect"><input type="radio" name="listing-type" value="incorrect" checked> The details are incorrect (name, address, phone)</label>
+        <label class="radio-row" data-lr-row="coordinates"><input type="radio" name="listing-type" value="coordinates"> The map pin / location is wrong</label>
+        <label class="radio-row" data-lr-row="contact"><input type="radio" name="listing-type" value="contact"> I have updated contact details</label>
+        <label class="radio-row" data-lr-row="closed"><input type="radio" name="listing-type" value="closed"> This station / centre is closed for good</label>
+        <label class="radio-row" data-lr-row="moved"><input type="radio" name="listing-type" value="moved"> It has moved to a different address</label>
+        <label class="radio-row" data-lr-row="safety"><input type="radio" name="listing-type" value="safety"> A safety concern about this place</label>
+        <label class="radio-row" data-lr-row="missing"><input type="radio" name="listing-type" value="missing"> Suggest a station that is not listed yet</label>
+        <label class="radio-row" data-lr-row="other"><input type="radio" name="listing-type" value="other"> Something else</label>
+      </div>
+      <div class="field">
+        <label for="listing-details" id="listing-details-label">Details — optional</label>
+        <textarea id="listing-details" maxlength="1000" placeholder="e.g. The phone number is wrong — the correct one is…"></textarea>
+      </div>
+      <p id="listing-msg" class="notice hidden"></p>
+      <button class="btn" id="listing-submit">Send listing report</button>
     </div>
-    <div class="field">
-      <label for="listing-details">Details — optional</label>
-      <textarea id="listing-details" maxlength="1000" placeholder="e.g. The phone number is wrong — the correct one is…"></textarea>
+    <div id="listing-success" class="hidden">
+      <p id="listing-success-note"></p>
+      <div class="field">
+        <label for="listing-ref">Your reference — keep it to check the report's status</label>
+        <input type="text" id="listing-ref" readonly>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn outline" id="listing-ref-copy">📋 Copy reference</button>
+        <button class="btn" id="listing-success-close">Done</button>
+      </div>
+      <p class="small">Check its status any time in Help → Check a report. The reference is also saved on this device.</p>
     </div>
-    <p id="listing-msg" class="notice hidden"></p>
-    <button class="btn" id="listing-submit">Send listing report</button>
   </div>
 </div>
 

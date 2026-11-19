@@ -11,12 +11,12 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.1.0"; // bumped 19 Nov 2026 — Phase 2 of the master transformation: NIPOST integration (proxy v2 with sandbox/live mode, L2-on-sandbox cap, structured errors; reference endpoints lgas/districts/areas), Postcode Explorer v2 (segment naming, validity + autofill, autocomplete, nearby discovery), verification cards on station/centre profiles, duplicate-pair review in admin
+const CACHE = "findcng-v3.2.0"; // bumped 19 Nov 2026 — Phase 3 of the master transformation: availability confidence system (freshness + confirmations + source, with the honest "why"), CNG Intelligence dashboard (national overview, state comparison, gaps, postcode areas, growth snapshots, data freshness), listing-report types + submission tracking, calculator v2 (editable CNG use, monthly saving, download), admin availability moderation, chat station grounding
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
   "js/leaflet.js", "js/data.js", "js/postcode.js", "js/app.js", "js/chat.js", "js/news.js",
-  "data/stations.json", "data/postcodes.json", "data/stats.json", "data/news-seed.json",
+  "data/stations.json", "data/postcodes.json", "data/stats.json", "data/news-seed.json", "data/history.json",
 ];
 
 self.addEventListener("install", (e) => {

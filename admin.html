@@ -14,7 +14,7 @@
     <div class="logo" aria-hidden="true"><svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="FindCNG logo"><rect width="40" height="40" rx="11" fill="#ffc61a"/><path d="M20 7 C20 7 12 15 12 20.6 a8 8 0 0 0 16 0 C28 15 20 7 20 7z" fill="#06382a"/><circle cx="20" cy="21" r="2.8" fill="#ffc61a"/></svg></div>
     <div>
       <h1>FindCNG — Moderator</h1>
-      <p>Review listing reports from users.</p>
+      <p>Review listing reports and availability reports.</p>
     </div>
   </div>
   <div class="top-links"><a href="index.html">← Back to the app</a></div>
@@ -43,6 +43,15 @@
     <p id="lr-msg" class="notice hidden"></p>
     <p class="result-count" id="lr-count"></p>
     <div id="lr-list"></div>
+    </div>
+
+    <div id="panel-av">
+      <h3 style="margin:22px 0 6px">Availability reports — recent history</h3>
+      <p class="small" style="margin:0 0 10px">The most recent availability reports, newest first. A <span class="burst-flag">⚠ burst</span> flag means one reporter filed 5+ reports in the last hour — check whether it is a flood, then delete the abusive rows. Deleting a report removes it from the live feed and from history. Saheed's own reports (CNG-018, CNG-021, CNG-009, 19 Nov) are real — do not delete them.</p>
+      <p><button class="btn outline small" id="av-refresh">↻ Refresh availability</button></p>
+      <p id="av-msg" class="notice hidden"></p>
+      <p class="result-count" id="av-count"></p>
+      <div id="av-list"></div>
     </div>
 
     <div class="card" id="panel-dupes">
@@ -99,6 +108,32 @@
     el.className = "notice" + (kind ? " " + kind : "");
     el.classList.remove("hidden");
   }
+  function timeAgo(iso) {
+    const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + " min ago";
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + " hr " + (m % 60) + " min ago";
+    return Math.floor(h / 24) + " day(s) ago";
+  }
+  // Listing-report type labels (Phase 3, §14): newer types are stored
+  // under the closest original DB type with a tag at the start of the
+  // details (see api/listing-reports.js) — render the tag back as the
+  // type, and strip it from the details shown.
+  function lrTypeLabel(r) {
+    const d = r.details || "";
+    if (d.startsWith("[Wrong coordinates]")) return "Wrong coordinates";
+    if (d.startsWith("[Updated contact]")) return "Updated contact details";
+    if (d.startsWith("[Safety concern]")) return "Safety concern";
+    if (d.startsWith("[Missing station]")) return "Missing station";
+    return r.report_type;
+  }
+  function lrDetails(r) {
+    const d = r.details || "";
+    const m = d.match(/^\[[^\]]+\]\s*/);
+    return m ? d.slice(m[0].length) : d;
+  }
 
   $("gate-go").addEventListener("click", async () => {
     passcode = $("passcode").value;
@@ -109,7 +144,9 @@
     $("gate").classList.add("hidden");
     $("queue").classList.remove("hidden");
     loadLrQueue();
+    loadAvQueue();
   });
+  $("av-refresh").addEventListener("click", loadAvQueue);
   $("passcode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("gate-go").click(); });
   document.querySelectorAll("#panel-lr .chip").forEach((c) => c.addEventListener("click", () => {
     document.querySelectorAll("#panel-lr .chip").forEach((x) => x.classList.remove("on"));
@@ -154,8 +191,8 @@
     }
     $("lr-list").innerHTML = rows.map((r) => `
       <div class="card station" data-id="${r.id}">
-        <h3>${esc(r.station_id)} — ${esc(r.report_type)}</h3>
-        <p class="meta">${esc(r.details || "No details given.")}</p>
+        <h3>${r.station_id === "NEW" ? "Suggested new station" : esc(r.station_id)} — ${esc(lrTypeLabel(r))}</h3>
+        <p class="meta">${esc(lrDetails(r) || "No details given.")}</p>
         <div class="row"><span class="badge ${r.status === "open" ? "low" : r.status === "resolved" ? "available" : "unconfirmed"}">${esc(r.status)}</span>
         <span class="small">reported ${new Date(r.reported_at).toLocaleString("en-NG")}</span></div>
       </div>`).join("");
@@ -167,12 +204,13 @@
     if (!r) return;
     currentId = id;
     $("detail-body").innerHTML = `
-      <h2>Listing report — ${esc(r.station_id)}</h2>
-      <p><b>Type:</b> ${esc(r.report_type)}<br>
-      <b>Details:</b> ${esc(r.details || "—")}<br>
+      <h2>Listing report — ${r.station_id === "NEW" ? "Suggested new station" : esc(r.station_id)}</h2>
+      <p><b>Type:</b> ${esc(lrTypeLabel(r))}<br>
+      <b>Details:</b> ${esc(lrDetails(r) || "—")}<br>
       <b>Status:</b> ${esc(r.status)}${r.resolution_note ? " — " + esc(r.resolution_note) : ""}<br>
       <b>Reported:</b> ${new Date(r.reported_at).toLocaleString("en-NG")}<br>
-      <a href="index.html?station=${encodeURIComponent(r.station_id)}" target="_blank" rel="noopener">Open the listing ↗</a></p>
+      ${r.station_id === "NEW" ? `<span class="small">No listing to open — this suggests a station that is not in the directory yet. Check the name, address and state against official lists before adding it to the master dataset.</span>`
+        : `<a href="index.html?station=${encodeURIComponent(r.station_id)}" target="_blank" rel="noopener">Open the listing ↗</a>`}</p>
       ${r.status === "open" ? `
       <div class="field" style="margin-top:14px">
         <label for="lr-note">Resolution note (optional)</label>
@@ -181,7 +219,10 @@
       <p id="detail-msg" class="notice hidden"></p>
       <button class="btn" id="lr-resolve-btn">✓ Mark resolved</button>
       <button class="btn outline" id="lr-dismiss-btn" style="margin-top:8px;background:#fff;color:#a02c2c;border-color:#a02c2c">✕ Dismiss</button>
-      <p class="small">Resolving here only closes the report — fix the listing itself in the master dataset (~/workspace/cng-project/data/stations.json) and re-run build-data.py, then redeploy.</p>` : ""}`;
+      <p class="small">Resolving here only closes the report — fix the listing itself in the master dataset (~/workspace/cng-project/data/stations.json) and re-run build-data.py, then redeploy.</p>` : ""}
+      <p id="detail-msg2" class="notice hidden"></p>
+      <button class="btn outline" id="lr-delete-btn" style="margin-top:8px;background:#fff;color:#a02c2c;border-color:#a02c2c">🗑 Delete this report</button>
+      <p class="small">Delete is for spam and test rows only — it removes the report permanently. Use Resolve or Dismiss for real reports.</p>`;
     $("detail-backdrop").classList.add("open");
     const rb = $("lr-resolve-btn");
     if (rb) rb.addEventListener("click", async () => {
@@ -195,6 +236,56 @@
       if (j && j.ok) { $("detail-backdrop").classList.remove("open"); loadLrQueue(); }
       else msg($("detail-msg"), (j && j.error) || "Could not dismiss.", "err");
     });
+    const del = $("lr-delete-btn");
+    if (del) del.addEventListener("click", async () => {
+      if (!confirm("Delete this listing report permanently? Use this only for spam or test rows.")) return;
+      const j = await call({ action: "delete_listing_report", id });
+      if (j && j.ok) { $("detail-backdrop").classList.remove("open"); loadLrQueue(); }
+      else msg($("detail-msg2"), (j && j.error) || "Could not delete.", "err");
+    });
+  }
+
+  // ---- Availability reports queue (Phase 3, §§8/14) ----
+  async function loadAvQueue() {
+    const m = $("av-msg");
+    m.classList.add("hidden");
+    const j = await call({ action: "list_availability_reports" });
+    if (!j || !j.ok) {
+      if (j && j.error === "wrong passcode") {
+        sessionStorage.removeItem("findcng_admin");
+        $("queue").classList.add("hidden");
+        $("gate").classList.remove("hidden");
+        msg($("gate-msg"), "Wrong passcode.", "err");
+        return;
+      }
+      msg(m, (j && j.error) || "Could not load availability reports.", "err");
+      return;
+    }
+    const rows = j.reports || [];
+    $("av-count").textContent = rows.length + " recent availability report(s)";
+    if (!rows.length) {
+      $("av-list").innerHTML = `<div class="empty"><p><b>No reports yet.</b></p><p>No availability reports in the recent history.</p></div>`;
+      return;
+    }
+    $("av-list").innerHTML = rows.map((r) => {
+      const fresh = (Date.now() - new Date(r.reported_at).getTime()) <= 2 * 60 * 60 * 1000;
+      return `
+      <div class="card station">
+        <h3>${esc(r.station_id)} — ${esc(r.status)}${fresh ? "" : " <span class=\"small\">(expired)</span>"}</h3>
+        <p class="meta">reported ${timeAgo(r.reported_at)}${r.queue_minutes != null ? ` · queue about ${r.queue_minutes} min` : ""}${r.pressure_ok === true ? " · pressure OK" : r.pressure_ok === false ? " · low pressure" : ""}${r.compressor_ok === true ? " · compressor working" : r.compressor_ok === false ? " · compressor faulty" : ""}</p>
+        <div class="row"><span class="badge ${r.status}">${esc(r.status)}</span>
+        ${r.burst ? `<span class="burst-flag">⚠ burst — reporter ${esc(r.reporter || "")}</span>` : `<span class="small">reporter ${esc(r.reporter || "—")}</span>`}
+        <a href="index.html?station=${encodeURIComponent(r.station_id)}" target="_blank" rel="noopener">Open listing ↗</a></div>
+        <p style="margin:8px 0 0"><button class="btn outline small av-delete" data-id="${r.id}" style="background:#fff;color:#a02c2c;border-color:#a02c2c">🗑 Delete report</button></p>
+      </div>`;
+    }).join("");
+    document.querySelectorAll(".av-delete").forEach((b) =>
+      b.addEventListener("click", async () => {
+        if (!confirm("Delete this availability report permanently? It disappears from the live feed and from history.")) return;
+        const dj = await call({ action: "delete_availability_report", id: b.dataset.id });
+        if (dj && dj.ok) loadAvQueue();
+        else msg(m, (dj && dj.error) || "Could not delete.", "err");
+      }));
   }
   $("detail-close").addEventListener("click", () => $("detail-backdrop").classList.remove("open"));
   $("detail-backdrop").addEventListener("click", (e) => { if (e.target === $("detail-backdrop")) $("detail-backdrop").classList.remove("open"); });
@@ -203,6 +294,7 @@
     $("gate").classList.add("hidden");
     $("queue").classList.remove("hidden");
     loadLrQueue();
+    loadAvQueue();
   }
 })();
 </script>

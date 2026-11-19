@@ -14,6 +14,10 @@
 //   3. For availability questions: fresh availability_reports (last 2 hours
 //      only). The LLM is told explicitly when NO recent report exists —
 //      it must never invent live availability.
+//   4. For station questions (Phase 3, §13): the named station's actual
+//      directory row from data/stations.json (read-only lookup, gated on
+//      directory intent + two distinctive name words). Missing fields
+//      are reported as "Information unavailable", never invented.
 // Plus a best-effort web search (no key) — but ONLY when the question
 // needs fresh/external facts (news, prices, Nigeria-specific facts). General
 // knowledge questions skip the search entirely, which is what makes them
@@ -93,16 +97,41 @@ function loadKnowledge() {
 }
 
 let stationNames = null; // Map station_id -> "Name, City (State)"
+let stationRows = null;  // Map station_id -> full directory row (read-only grounding, Phase 3)
 function loadStationNames() {
   if (stationNames !== null) return stationNames;
   stationNames = new Map();
+  stationRows = new Map();
   try {
     const list = JSON.parse(readFileSync(new URL("../data/stations.json", import.meta.url), "utf8"));
     for (const s of list) {
       stationNames.set(s.id, `${s.name || s.id}${s.city ? ", " + s.city : ""}${s.state ? " (" + s.state + ")" : ""}`);
+      stationRows.set(s.id, s);
     }
   } catch { /* name lookup is a nicety; station ids still work without it */ }
   return stationNames;
+}
+
+// Did the user name a station? Score each station by distinctive name
+// words present in the question (generic words like "station" or "road"
+// never count, so a general "nearest station with gas?" question never
+// false-matches one station). Returns { id, name, score } or null.
+const NAME_STOPWORDS = new Set(["station", "limited", "nigeria", "road", "street",
+  "avenue", "close", "petrol", "filling", "retail", "company", "energy",
+  "motors", "motor", "centre", "center", "conversion", "refuelling",
+  "services", "global", "enterprises", "north", "south", "east", "west"]);
+function findNamedStation(question) {
+  const names = loadStationNames();
+  const q = question.toLowerCase();
+  let named = null, bestScore = 0;
+  for (const [id, name] of names.entries()) {
+    const words = new Set(name.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+      .filter((w) => w.length >= 4 && !NAME_STOPWORDS.has(w)));
+    let score = 0;
+    for (const w of words) if (q.includes(w)) score++;
+    if (score > bestScore) { bestScore = score; named = [id, name]; }
+  }
+  return named ? { id: named[0], name: named[1], score: bestScore } : null;
 }
 
 // --- Web search (no key, best effort, fallback chain) ---------------------
@@ -342,29 +371,13 @@ async function availabilityContext(question) {
     const q = r.queue_minutes != null ? `, queue about ${r.queue_minutes} min` : "";
     return `- ${names.get(r.station_id) || r.station_id}: ${r.status}${q} (reported ${mins} min ago)`;
   };
-  // Did the user name a station? Score each station by distinctive name words
-  // present in the question (generic words like "station" or "road" never
-  // count, so a general "nearest station with gas?" question never
-  // false-matches one station).
-  const STOPWORDS = new Set(["station", "limited", "nigeria", "road", "street",
-    "avenue", "close", "petrol", "filling", "retail", "company", "energy",
-    "motors", "motor", "centre", "center", "conversion", "refuelling",
-    "services", "global", "enterprises", "north", "south", "east", "west"]);
-  const q = question.toLowerCase();
-  let named = null, bestScore = 0;
-  for (const [id, name] of names.entries()) {
-    const words = new Set(name.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
-      .filter((w) => w.length >= 4 && !STOPWORDS.has(w)));
-    let score = 0;
-    for (const w of words) if (q.includes(w)) score++;
-    if (score > bestScore) { bestScore = score; named = [id, name]; }
-  }
+  const named = findNamedStation(question);
   if (named) {
-    const mine = fresh.filter((r) => r.station_id === named[0]);
+    const mine = fresh.filter((r) => r.station_id === named.id);
     if (mine.length === 0) {
-      return `LIVE AVAILABILITY: NO recent report exists for ${named[1]} — no driver has reported gas status there in the last 2 hours. Say exactly that; do NOT guess whether it has gas. Point the user at the Map tab to check nearby stations.`;
+      return `LIVE AVAILABILITY: NO recent report exists for ${named.name} — no driver has reported gas status there in the last 2 hours. Say exactly that; do NOT guess whether it has gas. Point the user at the Map tab to check nearby stations.`;
     }
-    return `LIVE AVAILABILITY — fresh reports (last 2 hours) for ${named[1]}:\n${mine.slice(0, 3).map(label).join("\n")}`;
+    return `LIVE AVAILABILITY — fresh reports (last 2 hours) for ${named.name}:\n${mine.slice(0, 3).map(label).join("\n")}`;
   }
   if (fresh.length === 0) {
     return "LIVE AVAILABILITY: NO recent report exists for any station — no driver has reported gas status anywhere in the last 2 hours. Say exactly that; do NOT guess whether any station has gas. Point the user at the Map tab.";
@@ -373,6 +386,44 @@ async function availabilityContext(question) {
   const other = fresh.filter((r) => r.status !== "available").slice(0, 4);
   const lines = [...available, ...other].map(label).join("\n");
   return `LIVE AVAILABILITY — fresh reports (last 2 hours, newest first). Only these stations have known status; every other station is unconfirmed:\n${lines}`;
+}
+
+// --- Station grounding (Phase 3, §13) -------------------------------------
+// Read-only lookup in data/stations.json: when the user asks about a
+// specific station (where it is, its address, phone, accreditation),
+// the answer is grounded in the actual directory row — never the
+// model's own knowledge, which would invent addresses. Gated twice:
+// the question must show directory intent AND match at least two
+// distinctive name words, so "Where is the nearest station?" never
+// false-matches one station. Missing fields are reported as
+// "Information unavailable", never invented.
+const DIRECTORY_RE = /\b(where is|where's|address|located|location|find|directions|phone|call|contact|accredit|opening|hours|open now|near me|nearest)\b/i;
+function stationContext(question) {
+  if (!DIRECTORY_RE.test(question)) return null;
+  const named = findNamedStation(question);
+  if (!named || named.score < 2) return null;
+  loadStationNames();
+  const s = stationRows && stationRows.get(named.id);
+  if (!s) return null;
+  const typeLabel = s.type === "refuelling" ? "Refuelling station"
+    : s.type === "conversion" ? "Conversion centre"
+    : s.type === "both" ? "Refuelling station + conversion centre"
+    : (s.type || "Information unavailable");
+  const acc = s.acc ? "Officially accredited — Pi-CNG accredited centres register (checked 18 Nov 2026)"
+    : s.refReg ? "On the Pi-CNG refuelling stations register (updated 15 Oct 2026)"
+    : s.confidence === "stale-2024-list" ? "Needs re-verification — from a 2024 list, not re-checked against a current source"
+    : s.confidence === "single-source" ? "Single source — needs a second check"
+    : "Not on the Pi-CNG register — no accreditation is claimed for this entry";
+  const unavailable = "Information unavailable";
+  return `STATION (from the FindCNG directory — verified data, use ONLY these details for this station):\n` +
+    `- Name: ${s.name || unavailable}\n` +
+    `- Address: ${s.address || unavailable}\n` +
+    `- City, State: ${[s.city, s.state].filter(Boolean).join(", ") || unavailable}\n` +
+    `- Type: ${typeLabel}\n` +
+    `- Accreditation: ${acc}\n` +
+    `- Phone: ${s.phone || unavailable}\n` +
+    `- Opening hours: ${typeof s.hours === "string" ? s.hours : unavailable}\n` +
+    `If a detail above says "Information unavailable", say exactly that — never invent a phone number, hours, price or exact location. For live gas status use the LIVE AVAILABILITY block, not this one.`;
 }
 
 // --- Gemini ----------------------------------------------------------------
@@ -390,7 +441,8 @@ Rules:
 5. NEVER invent live availability. Use ONLY the LIVE AVAILABILITY block below. If it says no recent report exists, say exactly that and point the user at the Map tab in the FindCNG app. Never guess whether a station has gas.
 6. Never give DIY instructions for gas systems, cylinders, fittings or repairs. Direct the user to a certified installer / accredited conversion centre instead.
 7. If you genuinely do not know something, say "I don't know" plainly — never guess. But that is the last resort: think first, and only say it when you truly cannot answer.
-8. FINDCNG APP HELP: you know the app — Map tab (live status, nearest stations), Stations tab (134 refuelling stations), Centres tab (617 conversion centres), one-tap Has gas / Out reporting, WhatsApp share, postcode labels. When a question is about using the app, guide the user to the right tab.`;
+8. FINDCNG APP HELP: you know the app — Map tab (live status, nearest stations), Stations tab (134 refuelling stations), Centres tab (617 conversion centres), one-tap Has gas / Out reporting, WhatsApp share, postcode labels, CNG Intelligence dashboard (national overview, state comparison, gaps, growth). When a question is about using the app, guide the user to the right tab.
+9. STATION DETAILS: when the STATION block below names a station, use ONLY those details for its address, city, state, type and accreditation. If a detail is not listed there (phone, hours, price), say "Information unavailable" — never invent it. If no STATION block is given, do not guess a station's location — point the user at the Stations tab or the Map tab to find it.`;
 
 // Graceful fallback when the model still returns a bare "I don't know."
 // (the prompt asks it to think first, but this is the safety net).
@@ -564,6 +616,7 @@ export default async function handler(req, res) {
       AVAILABILITY_RE.test(question) ? availabilityContext(question) : Promise.resolve(null),
     ]);
     const knowledge = loadKnowledge();
+    const station = stationContext(question);
     const newsBlock = news.length
       ? "RECENT NEWS (from FindCNG, newest first):\n" + news.map((n) =>
           `- ${n.date} — ${n.title}${n.summary ? ": " + n.summary : ""}`).join("\n")
@@ -574,7 +627,7 @@ export default async function handler(req, res) {
         ? "LIVE WEB SEARCH results (use these for facts newer than the knowledge base):\n" + searchResults.map((s) =>
             `- ${s.title} (${s.url})${s.snippet ? " — " + s.snippet : ""}`).join("\n")
         : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own knowledge.";
-    const systemText = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general questions from your own knowledge; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}${availability ? "\n\n" + availability : ""}`;
+    const systemText = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general questions from your own knowledge; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}${availability ? "\n\n" + availability : ""}${station ? "\n\n" + station : ""}`;
     const contents = [...history, { role: "user", parts: [{ text: question }] }];
     // Answer chain: Gemini lite -> Gemini flash -> (OpenRouter if
     // configured, else one lite retry after a short wait on fast
