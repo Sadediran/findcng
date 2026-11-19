@@ -8,7 +8,7 @@
 // If the report_confirmations table does not exist yet (sql/001 not run),
 // both routes answer { ok: false, error: "not_open" } — the app shows
 // "Confirmations aren't open yet" instead of crashing.
-import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation } from "./_lib.js";
+import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation, checkSameOrigin } from "./_lib.js";
 
 const VOTES = new Set(["yes", "unsure", "no"]);
 
@@ -43,6 +43,9 @@ export default async function handler(req, res) {
       return json(res, 200, { configured: true, ok: true, counts });
     }
     if (req.method === "POST") {
+      if (!checkSameOrigin(req)) {
+        return json(res, 403, { ok: false, error: "cross-origin requests are not accepted" });
+      }
       if (!rateLimit(req, "confirmations", 60)) {
         return json(res, 429, { ok: false, error: "Too many confirmations — please wait a minute." });
       }

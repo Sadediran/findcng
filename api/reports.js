@@ -9,9 +9,28 @@
 // No account, no identity. If Supabase is not configured the routes answer
 // { configured: false } and the app shows an honest error (no silent
 // on-device saving — a report the user thinks is shared must be shared).
-import { json, sb, supabaseConfigured, reporterHash, rateLimit, isKnownStation } from "./_lib.js";
+import { json, sb, supabaseConfigured, reporterHash, rateLimit, isKnownStation, checkSameOrigin } from "./_lib.js";
 
 const STATUSES = new Set(["available", "low", "finished", "closed"]);
+// The `source` column exists only after sql/003 is run (Phase 4, §15):
+// 'community' for every driver report, 'operator' only for rows an admin
+// approved from an operator submission. Selecting a column that does not
+// exist makes PostgREST answer 400 (PGRST204), so the GETs below try
+// with `source` first and retry without it — the live feed must keep
+// working before the migration is run, and every pre-migration report
+// is community by definition.
+function isMissingSourceColumnError(e) {
+  return e && (e.code === "PGRST204" ||
+    /Could not find the 'source' column/i.test(String(e.message || "")));
+}
+async function sbWithSourceFallback(queryWithSource, queryWithout) {
+  try {
+    return await sb(queryWithSource);
+  } catch (e) {
+    if (isMissingSourceColumnError(e)) return sb(queryWithout);
+    throw e;
+  }
+}
 // Same station + same status within this window is a duplicate
 // (double-tap, retry storm) — return the latest report instead of
 // inserting another row. A changed status always files fresh, so a
@@ -44,21 +63,26 @@ export default async function handler(req, res) {
       const station = String(req.query.station || "").trim();
       if (station) {
         const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        const rows = await sb(
-          `availability_reports?select=id,station_id,status,queue_minutes,reported_at` +
-          `&station_id=eq.${encodeURIComponent(station)}&reported_at=gte.${encodeURIComponent(since)}` +
-          `&order=reported_at.desc&limit=500`
+        const base = `&station_id=eq.${encodeURIComponent(station)}&reported_at=gte.${encodeURIComponent(since)}` +
+          `&order=reported_at.desc&limit=500`;
+        const rows = await sbWithSourceFallback(
+          `availability_reports?select=id,station_id,status,queue_minutes,reported_at,source${base}`,
+          `availability_reports?select=id,station_id,status,queue_minutes,reported_at${base}`
         );
         return json(res, 200, { configured: true, reports: rows || [] });
       }
       const since = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
-      const rows = await sb(
-        `availability_reports?select=id,station_id,status,queue_minutes,pressure_ok,compressor_ok,reported_at` +
-        `&reported_at=gte.${encodeURIComponent(since)}&order=reported_at.desc&limit=2000`
+      const base = `&reported_at=gte.${encodeURIComponent(since)}&order=reported_at.desc&limit=2000`;
+      const rows = await sbWithSourceFallback(
+        `availability_reports?select=id,station_id,status,queue_minutes,pressure_ok,compressor_ok,reported_at,source${base}`,
+        `availability_reports?select=id,station_id,status,queue_minutes,pressure_ok,compressor_ok,reported_at${base}`
       );
       return json(res, 200, { configured: true, reports: rows || [] });
     }
     if (req.method === "POST") {
+      if (!checkSameOrigin(req)) {
+        return json(res, 403, { ok: false, error: "cross-origin requests are not accepted" });
+      }
       if (!rateLimit(req, "reports")) {
         return json(res, 429, { ok: false, error: "Too many reports — please wait a minute." });
       }

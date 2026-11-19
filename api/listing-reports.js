@@ -27,7 +27,7 @@
 // table does not exist yet (sql/001 not run), the routes answer
 // { ok: false, error: "not_open" } — the app shows "not open yet"
 // instead of crashing or silently dropping the report.
-import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation } from "./_lib.js";
+import { json, sb, supabaseConfigured, reporterHash, rateLimit, isMissingTableError, isKnownStation, checkSameOrigin } from "./_lib.js";
 
 // UI type -> { db type, details tag }. Types without a tag are stored
 // as-is (they are the four the table's CHECK constraint allows).
@@ -75,6 +75,9 @@ export default async function handler(req, res) {
     }
     if (req.method !== "POST") {
       return json(res, 405, { ok: false, error: "method not allowed" });
+    }
+    if (!checkSameOrigin(req)) {
+      return json(res, 403, { ok: false, error: "cross-origin requests are not accepted" });
     }
     if (!rateLimit(req, "listing-reports", 20)) {
       return json(res, 429, { ok: false, error: "Too many reports — please wait a minute." });
