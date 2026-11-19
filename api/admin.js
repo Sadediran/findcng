@@ -289,7 +289,11 @@ export default async function handler(req, res) {
             });
             publishedReportId = (inserted || [])[0]?.id || null;
           } catch (e2) {
-            if (e2.code === "PGRST204" || /Could not find the 'source' column/i.test(String(e2.message || ""))) {
+            // Missing-column error is 42703 / "column ...source does
+            // not exist" (verified live 19 Nov 2026).
+            if (e2.code === "42703" || e2.code === "PGRST204" ||
+                /column .*\.source does not exist/i.test(String(e2.message || "")) ||
+                /Could not find the 'source' column/i.test(String(e2.message || ""))) {
               return json(res, 503, { ok: false, error: "not_open",
                 message: "Operator availability needs the source column — run sql/003 in Supabase first. The submission stays pending." });
             }
@@ -334,12 +338,16 @@ export default async function handler(req, res) {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const hour2Ago = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const out = { generated_at: new Date().toISOString(), not_open: [] };
+      const notOpenSeen = new Set();
       async function count(table, filter) {
         try {
           const rows = await sb(`${table}?select=id${filter || ""}&limit=10000`);
           return Array.isArray(rows) ? rows.length : 0;
         } catch (e) {
-          if (isMissingTableError(e)) { out.not_open.push(table); return 0; }
+          if (isMissingTableError(e)) {
+            if (!notOpenSeen.has(table)) { notOpenSeen.add(table); out.not_open.push(table); }
+            return 0;
+          }
           throw e;
         }
       }

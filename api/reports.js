@@ -20,7 +20,11 @@ const STATUSES = new Set(["available", "low", "finished", "closed"]);
 // working before the migration is run, and every pre-migration report
 // is community by definition.
 function isMissingSourceColumnError(e) {
-  return e && (e.code === "PGRST204" ||
+  // PostgREST answers 400 code 42703, message "column
+  // availability_reports.source does not exist" (verified live 19 Nov
+  // 2026 — NOT PGRST204, which is what the docs suggest).
+  return e && (e.code === "42703" || e.code === "PGRST204" ||
+    /column .*\.source does not exist/i.test(String(e.message || "")) ||
     /Could not find the 'source' column/i.test(String(e.message || "")));
 }
 async function sbWithSourceFallback(queryWithSource, queryWithout) {
