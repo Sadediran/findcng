@@ -175,10 +175,19 @@ export default async function handler(req, res) {
     // truncated reporter hash, and hashes with 5+ reports in the last
     // hour are flagged as a burst so a flood is visible at a glance.
     if (action === "list_availability_reports") {
-      const rows = await sb(
-        `availability_reports?select=id,station_id,status,queue_minutes,pressure_ok,compressor_ok,reported_at,reporter_hash` +
-        `&order=reported_at.desc&limit=200`
-      );
+      // The `source` column exists only after sql/003 — same fallback
+      // as api/reports.js (42703 when the column is missing).
+      let rows;
+      const base = `?select=id,station_id,status,queue_minutes,pressure_ok,compressor_ok,reported_at,reporter_hash` +
+        `&order=reported_at.desc&limit=200`;
+      try {
+        rows = await sb(`availability_reports${base.replace("reporter_hash", "reporter_hash,source")}`);
+      } catch (e) {
+        if (e.code === "42703" || e.code === "PGRST204" ||
+            /column .*\.source does not exist/i.test(String(e.message || ""))) {
+          rows = await sb(`availability_reports${base}`);
+        } else throw e;
+      }
       const hourAgo = Date.now() - 60 * 60 * 1000;
       const counts = {};
       (rows || []).forEach((r) => {
@@ -196,6 +205,7 @@ export default async function handler(req, res) {
         pressure_ok: r.pressure_ok,
         compressor_ok: r.compressor_ok,
         reported_at: r.reported_at,
+        source: r.source || "community",
         reporter: r.reporter_hash ? String(r.reporter_hash).slice(0, 8) : null,
         burst: flagged.has(r.reporter_hash),
       }));
