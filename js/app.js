@@ -945,6 +945,68 @@
       if (errors.length >= 3) setMapLayer("street", { fallbackFrom: kind });
     });
   }
+  // Slow-tile UX (19 Nov 2026): on a slow connection the satellite layer
+  // can sit grey for 10–30s without a single tile ERROR (Esri tiles are
+  // ~3x the bytes of OSM street tiles), so the error fallback never fires
+  // and the map just looks broken. Show a loading pill while the active
+  // layer is fetching, offer a manual switch to street after 6s, and
+  // auto-switch to street if satellite loads continuously for 15s.
+  let tileSlowTimer = null;
+  let tileSlowNudgeTimer = null;
+  function mapLoadingEl() {
+    let el = $("map-loading");
+    if (el) return el;
+    const mapEl = $("map");
+    if (!mapEl) return null;
+    el = document.createElement("div");
+    el.id = "map-loading";
+    el.className = "map-loading hidden";
+    el.setAttribute("role", "status");
+    el.innerHTML = '<span class="map-loading-dot"></span><span class="map-loading-text">Loading map…</span><button type="button" class="map-loading-btn hidden">Use street map</button>';
+    el.querySelector(".map-loading-btn").addEventListener("click", () => setMapLayer("street"));
+    mapEl.appendChild(el);
+    return el;
+  }
+  function showMapLoading(kind) {
+    const el = mapLoadingEl();
+    if (!el) return;
+    el.querySelector(".map-loading-text").textContent =
+      kind === "satellite" ? "Loading satellite imagery…" : "Loading street map…";
+    el.querySelector(".map-loading-btn").classList.add("hidden");
+    el.classList.remove("hidden");
+  }
+  function hideMapLoading() {
+    const el = $("map-loading");
+    if (el) el.classList.add("hidden");
+    clearTimeout(tileSlowTimer); tileSlowTimer = null;
+    clearTimeout(tileSlowNudgeTimer); tileSlowNudgeTimer = null;
+  }
+  function watchLayerLoading(layer, kind) {
+    layer.on("loading", () => {
+      if (!map || mapLayer !== kind || !map.hasLayer(layer)) return;
+      showMapLoading(kind);
+      clearTimeout(tileSlowNudgeTimer);
+      tileSlowNudgeTimer = setTimeout(() => {
+        const el = $("map-loading");
+        if (!el || el.classList.contains("hidden") || mapLayer !== "satellite") return;
+        el.querySelector(".map-loading-text").textContent = "Still loading — slow connection?";
+        el.querySelector(".map-loading-btn").classList.remove("hidden");
+      }, 6000);
+      // Slow-load auto-fallback, satellite only: 15s of continuous
+      // loading with no 'load' event means the provider is too slow to
+      // use on this connection. Same disarm rules as the error fallback.
+      clearTimeout(tileSlowTimer); tileSlowTimer = null;
+      if (kind === "satellite") {
+        tileSlowTimer = setTimeout(() => {
+          if (!tileFallbackArmed || mapLayer !== "satellite" || !map || !map.hasLayer(layer)) return;
+          setMapLayer("street", { fallbackFrom: "satellite" });
+        }, 15000);
+      }
+    });
+    layer.on("load", () => {
+      if (mapLayer === kind) hideMapLoading();
+    });
+  }
   function initMap() {
     if (map) return;
     if (!leafletReady()) {
@@ -957,6 +1019,8 @@
       street: createBaseLayer("street"),
     };
     watchTileErrors(baseLayers.satellite, "satellite");
+    watchLayerLoading(baseLayers.satellite, "satellite");
+    watchLayerLoading(baseLayers.street, "street");
     mapLayer = storedMapLayer();
     baseLayers[mapLayer].addTo(map);
     try { localStorage.setItem(MAP_LAYER_KEY, mapLayer); } catch { /* ignore */ }
