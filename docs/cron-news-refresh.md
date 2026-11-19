@@ -122,9 +122,9 @@ Delete in batches of at most 50 ids per call if the list is long.
 > opinions, complaints without a news event, or claims you cannot
 > verify.
 >
-> (d) **The Pi-CNG press releases listing** on pci.gov.ng (find its
-> current URL from the site — press releases live under
-> `/press-releases/`) for new releases since the last run.
+> (d) **The Pi-CNG press releases listing** on pci.gov.ng (the listing is
+> served at `https://www.pci.gov.ng/press-releases.html` — the
+> `/press-releases/` path returns 403) for new releases since the last run.
 >
 > Prefer items published since the last run; anything from the last 7
 > days is eligible if it is not already stored. **Every item must link

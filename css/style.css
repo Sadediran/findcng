@@ -264,6 +264,15 @@ input[type="file"] { width: 100%; min-height: 48px; }
 .station.st-finished, .station.st-closed { border-left: 4px solid var(--bad); }
 .station.st-unconfirmed { border-left: 4px solid var(--line); }
 .station .fav-btn { position: absolute; top: 12px; right: 12px; }
+/* One-tap report (19 Nov 2026): two thumb-friendly buttons on every
+   refuelling station card and map popup. Colours match the status
+   badges (green = gas available, red = gas finished). */
+.quick-report { display: flex; gap: 8px; margin-top: 10px; }
+.qr-btn { flex: 1; min-height: 40px; border-radius: 10px; border: 1.5px solid var(--green); background: #fff; color: var(--green-deep); font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.qr-btn.qr-yes { background: #e2f5e9; border-color: #9fd8b4; color: var(--ok-deep); }
+.qr-btn.qr-no { background: #fde7e7; border-color: #f2b8b8; color: var(--bad-deep); }
+.qr-btn:active { transform: scale(.97); }
+.qr-btn:disabled { opacity: .55; cursor: not-allowed; }
 .dist-chip { font-weight: 800; color: var(--green-deep); font-variant-numeric: tabular-nums; }
 .empty { text-align: center; padding: 30px 16px; color: var(--muted); }
 .empty .big { font-size: 36px; }

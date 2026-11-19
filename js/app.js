@@ -521,8 +521,14 @@
     const prec = coordPrecision(s);
     const precLine = prec === "town" ? `<br><span class="badge area-pin">◉ Area pin — neighbourhood, not exact spot</span>`
       : prec === "approximate" ? `<br><span class="small">≈ Approximate location — near this spot, not exact</span>` : "";
+    // One-tap report (19 Nov 2026): refuelling stations only, same rule
+    // as the card buttons. Inline onclick: Leaflet popups are plain HTML
+    // strings with no bind step, so the handler must be global.
+    const qr = (s.type !== "conversion" && !s.live)
+      ? `<br><button class="qr-btn qr-yes" style="margin-top:8px" onclick="quickReport('${s.id}','available',this)">✅ Has gas</button> <button class="qr-btn qr-no" onclick="quickReport('${s.id}','finished',this)">🔴 Out</button>`
+      : "";
     return `<b>${esc(s.name)}</b><br>${esc(s.address || "")}<br>${esc(locLabel(s))}${d}<br>` +
-      `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}${precLine}<br>` +
+      `${F.STATUS[st].label}${st !== "unconfirmed" ? " · " + timeAgo(reports.get(s.id).ts) : ""}${precLine}${qr}<br>` +
       `<button class="btn small" style="margin-top:8px" onclick="openStation('${s.id}')">Details &amp; report</button>`;
   }
   // Lightweight grid clustering (plain JS, no library): group markers into
@@ -779,10 +785,16 @@
     const st = statusOf(s.id);
     const precChip = coordPrecision(s) === "town" ? " " + precisionChip(s) : "";
     const liveBadge = s.live ? ` <span class="badge live-new">🆕 New — just listed</span>` : "";
+    // One-tap report (19 Nov 2026): refuelling stations only — conversion
+    // centres don't sell gas — and never live entries (a LIVE- id would
+    // not survive the daily merge, so the report would be orphaned).
+    const qrBtns = (s.type !== "conversion" && !s.live)
+      ? `<div class="quick-report"><button class="qr-btn qr-yes" data-qr="${s.id}|available" aria-label="Report gas available here">✅ Has gas</button><button class="qr-btn qr-no" data-qr="${s.id}|finished" aria-label="Report gas finished here">🔴 Out</button></div>`
+      : "";
     return `<div class="card station st-${st}" data-id="${s.id}"><h3>${esc(s.name)} ${favBtn}</h3>` +
       `<p class="meta">${esc(s.address || "")}</p>` +
       `<p class="meta">${esc(locLabel(s))}${d}${noc}</p>` +
-      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}${liveBadge}</div></div>`;
+      `<div class="row">${statusBadge(s.id, true)} ${typeBadge(s.type)} ${verifyBadge(s)}${precChip}${liveBadge}</div>${qrBtns}</div>`;
   }
   function bindCards(box) {
     box.querySelectorAll(".station").forEach((el) =>
@@ -795,6 +807,14 @@
         e.stopPropagation();
         toggleFav(btn.dataset.fav);
         renderStations(); renderCentres(); renderNearest();
+      }));
+    // One-tap report buttons: stopPropagation so the tap reports instead
+    // of opening the station detail.
+    box.querySelectorAll("[data-qr]").forEach((btn) =>
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const [id, status] = btn.dataset.qr.split("|");
+        quickReport(id, status, btn);
       }));
   }
   function renderStations() {
@@ -1197,6 +1217,36 @@
       .catch(() => toast("Couldn't reach the server — try again."));
   }
   window.backToNormal = backToNormal;
+  // One-tap report from a station card or map popup (19 Nov 2026): posts
+  // immediately with no queue/pressure details — the full four-option
+  // form stays in the detail view. Same trust model as the full flow:
+  // anonymous, live for 2 hours. The tapped button disables while the
+  // post is in flight so a double-tap can't file twice.
+  function quickReport(id, status, btn) {
+    if (!id || (status !== "available" && status !== "finished")) return;
+    if (btn) btn.disabled = true;
+    postReport({ station_id: id, status, queue_minutes: null, pressure_ok: null, compressor_ok: null })
+      .then((j) => {
+        if (j && j.ok) {
+          reports.set(id, { id: (j.report && j.report.id) || null, status, queue: null,
+            pressure: null, compressor: null, ts: Date.now() });
+          toast(status === "available"
+            ? "Thank you — marked as gas available for the next 2 hours."
+            : "Thank you — marked as gas finished for the next 2 hours.");
+          refreshStatuses();
+        } else if (j && j.configured === false) {
+          toast("The reporting server is not available — nothing was saved.");
+          if (btn) btn.disabled = false;
+        } else {
+          throw new Error((j && j.error) || "failed");
+        }
+      })
+      .catch(() => {
+        toast("Couldn't reach the server — try again. Nothing was saved.");
+        if (btn) btn.disabled = false;
+      });
+  }
+  window.quickReport = quickReport;
 
   // ---------------- listing reports ----------------
   function openListing(id, type) {
