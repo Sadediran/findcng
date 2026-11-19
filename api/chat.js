@@ -32,13 +32,14 @@
 // only when needed. If every model fails, the route still answers 200
 // with a helpful fallback message — the chat never shows a bare error.
 //
-// BACKUP PROVIDER (19 Nov 2026, Saheed's choice): when GROQ_API_KEY is
-// set (free GroqCloud key, no card), Groq answers if the whole Gemini
-// chain fails. Groq is fast (LPU inference, ~2s for a short answer) and
-// its free limits (30 req/min, 1,000 req/day) never bind as a fallback
-// that only runs when Gemini is down. Without the key, the old lite
-// retry runs instead. Adding the key to Vercel needs a redeploy before
-// the functions see it.
+// BACKUP PROVIDER (19 Nov 2026, Saheed's choice — switched from Groq,
+// whose sign-up blocked his account with code signup_blocked): when
+// OPENROUTER_API_KEY is set (free OpenRouter key, no card), OpenRouter
+// answers if the whole Gemini chain fails. Its free models cost $0 and
+// the no-credits tier allows 50 requests/day — far more than a fallback
+// that only runs when Gemini is down ever needs. Without the key, the
+// old lite retry runs instead. Adding the key to Vercel needs a redeploy
+// before the functions see it.
 //
 // Env: GEMINI_API_KEY (free Google AI Studio key). Without it the route
 // answers { configured: false } and the app shows "being set up" —
@@ -463,8 +464,8 @@ async function askGeminiOnce(apiKey, systemText, contents, model, timeoutMs) {
 async function askGeminiChain(apiKey, systemText, contents) {
   // Tries lite, then 3.8-flash; on transient overload (503/429) OR a
   // timeout, moves straight to the next model. Returns the answer or
-  // throws the last error — the caller decides the next step (Groq, or
-  // the lite retry when Groq is not configured).
+  // throws the last error — the caller decides the next step (OpenRouter, or
+  // the lite retry when OpenRouter is not configured).
   // 18 Nov 2026 ~18:10 WAT: the free tier was so overloaded at peak hours
   // that BOTH models 503'd on about half the requests (Vercel logs show
   // interleaved successes and "high demand" 503s within the same minute).
@@ -483,17 +484,22 @@ async function askGeminiChain(apiKey, systemText, contents) {
   throw lastError || new Error("Gemini request failed");
 }
 
-// --- Groq (free backup, 19 Nov 2026) --------------------------------------
+// --- OpenRouter (free backup, 19 Nov 2026) ---------------------------------
 // OpenAI-compatible chat completions. The same system prompt + history go
-// to Groq, mapped to the OpenAI message shape (Gemini "model" turns
-// become "assistant" turns). gpt-oss-120b reasons before answering, so
-// the token budget covers reasoning plus the ~150-word answer.
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "openai/gpt-oss-120b";
-const GROQ_TIMEOUT_MS = 15000;
-const GROQ_MAX_TOKENS = 2000;
+// to OpenRouter, mapped to the OpenAI message shape (Gemini "model" turns
+// become "assistant" turns). Model "openrouter/free" is OpenRouter's own
+// router across its free models — the free lineup rotates every few
+// weeks, so routing beats pinning one model that can be delisted (live
+// list checked 19 Nov 2026: 13 free models, all $0, incl. Gemma 4 and
+// Nemotron 3). HTTP-Referer + X-Title are OpenRouter's recommended app
+// headers. Free models cost $0, so the token budget is generous: a
+// reasoning model behind the router may spend some of it thinking.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = "openrouter/free";
+const OPENROUTER_TIMEOUT_MS = 15000;
+const OPENROUTER_MAX_TOKENS = 2500;
 
-async function askGroq(apiKey, systemText, contents) {
+async function askOpenRouter(apiKey, systemText, contents) {
   const messages = [
     { role: "system", content: systemText },
     ...contents.map((t) => ({
@@ -501,18 +507,23 @@ async function askGroq(apiKey, systemText, contents) {
       content: t.parts.map((p) => p.text || "").join(""),
     })),
   ];
-  const r = await fetch(GROQ_URL, {
+  const r = await fetch(OPENROUTER_URL, {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: GROQ_MAX_TOKENS }),
-    signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://findcng.vercel.app",
+      "X-Title": "FindCNG",
+    },
+    body: JSON.stringify({ model: OPENROUTER_MODEL, messages, max_tokens: OPENROUTER_MAX_TOKENS }),
+    signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
   });
   const body = await r.json().catch(() => null);
   if (!r.ok) {
-    throw new Error(`Groq ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 300)}`);
+    throw new Error(`OpenRouter ${r.status}: ${String(body?.error?.message || "request failed").slice(0, 300)}`);
   }
   const text = String(body?.choices?.[0]?.message?.content || "").trim();
-  if (!text) throw new Error("Groq returned no answer");
+  if (!text) throw new Error("OpenRouter returned no answer");
   return text;
 }
 
@@ -545,7 +556,7 @@ export default async function handler(req, res) {
   const history = parseHistory((req.body || {}).history);
   const cngTopic = CNG_TOPIC_RE.test(question);
   const doSearch = needsSearch(question);
-  const groqKey = (process.env.GROQ_API_KEY || "").trim();
+  const openRouterKey = (process.env.OPENROUTER_API_KEY || "").trim();
   try {
     const [news, searchResults, availability] = await Promise.all([
       recentNews(),
@@ -565,10 +576,11 @@ export default async function handler(req, res) {
         : "LIVE WEB SEARCH: unavailable just now — answer from the knowledge base and your own knowledge.";
     const systemText = `${SYSTEM_RULES}\n\nVERIFIED KNOWLEDGE BASE:\n${knowledge || "(knowledge base unavailable — answer general questions from your own knowledge; for Nigeria-specific facts, say you don't know.)"}\n\n${newsBlock}\n\n${searchBlock}${availability ? "\n\n" + availability : ""}`;
     const contents = [...history, { role: "user", parts: [{ text: question }] }];
-    // Answer chain: Gemini lite -> Gemini flash -> (Groq if configured, else
-    // one lite retry after a short wait on fast overload). Budget with
-    // Groq: 5s search + 15s + 15s + 15s = 50s; without: 5s + 15s + 15s +
-    // 4s wait + 12s retry = 51s — both inside the 60s function cap.
+    // Answer chain: Gemini lite -> Gemini flash -> (OpenRouter if
+    // configured, else one lite retry after a short wait on fast
+    // overload). Budget with OpenRouter: 5s search + 15s + 15s + 15s =
+    // 50s; without: 5s + 15s + 15s + 4s wait + 12s retry = 51s — both
+    // inside the 60s function cap.
     let answer;
     let provider = "gemini";
     const geminiStarted = Date.now();
@@ -576,11 +588,11 @@ export default async function handler(req, res) {
       answer = await askGeminiChain(apiKey, systemText, contents);
     } catch (geminiError) {
       const geminiElapsed = Date.now() - geminiStarted;
-      if (groqKey) {
-        console.error(`chat gemini failed (${String(geminiError.message).slice(0, 120)}), trying Groq`);
-        answer = await askGroq(groqKey, systemText, contents);
-        provider = "groq";
-        console.error("chat answered by groq");
+      if (openRouterKey) {
+        console.error(`chat gemini failed (${String(geminiError.message).slice(0, 120)}), trying OpenRouter`);
+        answer = await askOpenRouter(openRouterKey, systemText, contents);
+        provider = "openrouter";
+        console.error("chat answered by openrouter");
       } else if (/503|429/.test(geminiError.message) && geminiElapsed < 20000) {
         // No backup provider: the 503s come back FAST, so wait 4s and try
         // the lite model once more — spikes often clear within seconds.

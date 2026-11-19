@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v2.4.10"; // bumped 19 Nov 2026 — Groq free backup for the chat (answers when the Gemini chain fails; needs GROQ_API_KEY in Vercel env + redeploy to activate)
+const CACHE = "findcng-v2.4.11"; // bumped 19 Nov 2026 — chat backup switched from Groq (sign-up blocked) to OpenRouter free (openrouter/free router; needs OPENROUTER_API_KEY in Vercel env + redeploy to activate)
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
