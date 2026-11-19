@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.2.0"; // bumped 19 Nov 2026 — Phase 3 of the master transformation: availability confidence system (freshness + confirmations + source, with the honest "why"), CNG Intelligence dashboard (national overview, state comparison, gaps, postcode areas, growth snapshots, data freshness), listing-report types + submission tracking, calculator v2 (editable CNG use, monthly saving, download), admin availability moderation, chat station grounding
+const CACHE = "findcng-v3.2.1"; // bumped 19 Nov 2026 — Phase 3 fix found by live UI testing: calculator Copy/Download buttons are static HTML now (a tap right after editing a field was swallowed when the change event re-rendered the buttons under the tap). Phase 3: availability confidence system (freshness + confirmations + source, with the honest "why"), CNG Intelligence dashboard (national overview, state comparison, gaps, postcode areas, growth snapshots, data freshness), listing-report types + submission tracking, calculator v2 (editable CNG use, monthly saving, download), admin availability moderation, chat station grounding
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

@@ -267,13 +267,13 @@ except Exception as e:
     check("homepage carries the Phase 1 hero", False, str(e)[:120])
 try:
     s, sw = fetch_text(BASE + "/sw.js")
-    check("sw.js cache is findcng-v3.1.0", s == 200 and "findcng-v3.1.0" in sw)
+    check("sw.js cache is findcng-v3.2.1", s == 200 and "findcng-v3.2.1" in sw)
 except Exception as e:
-    check("sw.js cache is findcng-v3.1.0", False, str(e)[:120])
+    check("sw.js cache is findcng-v3.2.1", False, str(e)[:120])
 try:
     s, sm = fetch_text(BASE + "/sitemap.xml")
     check("sitemap lists the new views",
-          s == 200 and "?view=coverage" in sm and "?view=postcode" in sm, f"urls={sm.count('<url>')}")
+          s == 200 and "?view=intelligence" in sm and "?view=postcode" in sm, f"urls={sm.count('<url>')}")
 except Exception as e:
     check("sitemap lists the new views", False, str(e)[:120])
 
@@ -336,6 +336,168 @@ def check_postcode():
     check("empty postcode code -> 400", s == 400, f"HTTP {s}")
 
 check_postcode()
+
+# --- Phase 3 checks (19 Nov 2026): confidence, intelligence data,
+# reporting types + tracking, admin availability moderation ------------
+def check_phase3():
+    # 1. Intelligence data reconciles: per_state_detail sums match the
+    # stats totals, and the stats totals match the live stations.json.
+    try:
+        s, st = call("GET", BASE + "/data/stats.json")
+        s2, stations_txt = fetch_text(BASE + "/data/stations.json")
+        stations = json.loads(stations_txt)
+        detail = st.get("per_state_detail", [])
+        sums_ok = (
+            sum(d["total"] for d in detail) == st.get("total_records") == len(stations)
+            and sum(d["refuelling"] for d in detail) == st.get("refuelling_locations")
+            and sum(d["conversion"] for d in detail) == st.get("conversion_centres")
+            and sum(d["accredited"] for d in detail) == st.get("picng_register_matched")
+            and sum(d["with_coords"] for d in detail) == st.get("with_coordinates")
+            and sum(1 for x in stations if x.get("lat")) == st.get("with_coordinates")
+        )
+        check("stats per_state_detail sums reconcile with totals + stations.json",
+              s == 200 and sums_ok,
+              f"states={len(detail)} total={st.get('total_records')} stations={len(stations)}")
+    except Exception as e:
+        check("stats per_state_detail sums reconcile with totals + stations.json", False, str(e)[:120])
+    # 2. Growth history: at least the 19 Nov 2026 baseline snapshot, with
+    # totals matching stats.json.
+    try:
+        s, hist_txt = fetch_text(BASE + "/data/history.json")
+        hist = json.loads(hist_txt)
+        s3, st3 = call("GET", BASE + "/data/stats.json")
+        last = hist[-1] if hist else {}
+        ok = (isinstance(hist, list) and len(hist) >= 1
+              and last.get("date") == "2026-11-19"
+              and last.get("total_records") == st3.get("total_records")
+              and last.get("with_coordinates") == st3.get("with_coordinates"))
+        check("history.json has the 19 Nov baseline snapshot, totals match stats",
+              ok, f"snapshots={len(hist) if isinstance(hist, list) else '?'} last={last.get('date')}")
+    except Exception as e:
+        check("history.json has the 19 Nov baseline snapshot, totals match stats", False, str(e)[:120])
+
+    # 3. Batch confirmations: two test reports, votes on each, one batch GET.
+    s, r = call("POST", BASE + "/api/reports", {"station_id": "CNG-003", "status": "available"})
+    rep_a = (r.get("report") or {}).get("id")
+    s, r = call("POST", BASE + "/api/reports", {"station_id": "CNG-004", "status": "finished"})
+    rep_b = (r.get("report") or {}).get("id")
+    if rep_a and rep_b:
+        s1, _ = call("POST", BASE + "/api/confirmations",
+                     {"report_id": rep_a, "station_id": "CNG-003", "vote": "yes"})
+        s2, _ = call("POST", BASE + "/api/confirmations",
+                     {"report_id": rep_b, "station_id": "CNG-004", "vote": "no"})
+        s3, r3 = call("GET", BASE + f"/api/confirmations?report_ids={rep_a},{rep_b}")
+        counts = r3.get("counts") or {}
+        ok = (s3 == 200 and r3.get("ok") is True
+              and counts.get(rep_a, {}).get("yes", 0) >= 1
+              and counts.get(rep_b, {}).get("no", 0) >= 1)
+        check("batch confirmations GET returns counts for both reports",
+              ok, f"HTTP {s3} counts={counts}")
+        # A single-report GET still works (no regression).
+        s4, r4 = call("GET", BASE + f"/api/confirmations?report_id={rep_a}")
+        check("single confirmations GET still works",
+              s4 == 200 and (r4.get("counts") or {}).get("yes", 0) >= 1, f"HTTP {s4}")
+    else:
+        check("batch confirmations GET returns counts for both reports", False,
+              f"no test report ids ({rep_a}, {rep_b})")
+        check("single confirmations GET still works", False, "no test report id")
+    # Cleanup: deleting the reports cascades to their confirmations.
+    for rid in (rep_a, rep_b):
+        if rid:
+            s, _ = call("DELETE", f"{SB}/rest/v1/availability_reports?id=eq.{rid}", headers=hdrs)
+            check(f"cleanup: batch-confirm test report {rid[:8]} deleted", s in (200, 204), f"HTTP {s}")
+
+    # 4. Listing-report types (§14): coordinates + dedupe, contact,
+    # safety, missing (NEW), validation errors, status check, admin delete.
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "CNG-003", "report_type": "coordinates",
+                 "details": "PHASE3 TEST — pin is on the wrong side of the road"})
+    lr_a = r.get("id")
+    check("POST coordinates listing report", s == 200 and r.get("ok") is True and lr_a,
+          f"HTTP {s} id={lr_a}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "CNG-003", "report_type": "coordinates",
+                 "details": "PHASE3 TEST — duplicate of the first"})
+    check("duplicate listing report returns duplicate:true, same id",
+          s == 200 and r.get("duplicate") is True and r.get("id") == lr_a, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "CNG-004", "report_type": "contact",
+                 "details": "PHASE3 TEST — new phone 08030000000"})
+    lr_b = r.get("id")
+    check("POST contact listing report", s == 200 and r.get("ok") is True and lr_b, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "CNG-005", "report_type": "safety",
+                 "details": "PHASE3 TEST — staff filling a cooking-gas cylinder"})
+    lr_c = r.get("id")
+    check("POST safety listing report", s == 200 and r.get("ok") is True and lr_c, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "NEW", "report_type": "missing",
+                 "details": "PHASE3 TEST — Test Station, 1 Test Road, Ikeja, Lagos"})
+    lr_d = r.get("id")
+    check("POST missing-station suggestion (NEW)", s == 200 and r.get("ok") is True and lr_d,
+          f"HTTP {s} id={lr_d}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "NEW", "report_type": "missing", "details": "short"})
+    check("missing suggestion with short details -> 400", s == 400, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "CNG-003", "report_type": "missing",
+                 "details": "PHASE3 TEST — missing must use NEW"})
+    check("missing suggestion with a real station id -> 400", s == 400, f"HTTP {s}")
+    s, r = call("POST", BASE + "/api/listing-reports",
+                {"station_id": "NEW", "report_type": "incorrect", "details": "PHASE3 TEST"})
+    check("NEW station id with a non-missing type -> 400", s == 400, f"HTTP {s}")
+    # Status check (submission tracking): public fields only, no reporter hash.
+    if lr_a:
+        s, r = call("GET", BASE + f"/api/listing-reports?id={lr_a}")
+        rep = r.get("report") or {}
+        ok = (s == 200 and r.get("ok") is True and rep.get("status") == "open"
+              and rep.get("report_type") == "incorrect"
+              and str(rep.get("details", "")).startswith("[Wrong coordinates]")
+              and "reporter_hash" not in rep)
+        check("GET listing-report status check (tagged type, no reporter hash)",
+              ok, f"HTTP {s} type={rep.get('report_type')} status={rep.get('status')}")
+    else:
+        check("GET listing-report status check (tagged type, no reporter hash)", False, "no id")
+    s, r = call("GET", BASE + "/api/listing-reports?id=00000000-0000-0000-0000-000000000000")
+    check("GET listing-report status check for unknown id -> 404", s == 404, f"HTTP {s}")
+    # Admin delete (moderation) removes the test rows; verify each is gone.
+    for lid in (lr_a, lr_b, lr_c, lr_d):
+        if not lid:
+            continue
+        s, r = call("POST", BASE + "/api/admin", {"action": "delete_listing_report", "id": lid},
+                    headers={"X-Admin-Passcode": ADMIN})
+        ok_del = s == 200 and r.get("ok") is True
+        s2, _ = call("GET", BASE + f"/api/listing-reports?id={lid}")
+        check(f"admin delete_listing_report {lid[:8]} (+ gone afterwards)",
+              ok_del and s2 == 404, f"HTTP {s}/{s2}")
+
+    # 5. Admin availability moderation: a test report appears in the
+    # admin list and can be deleted from there.
+    s, r = call("POST", BASE + "/api/reports", {"station_id": "CNG-006", "status": "low", "queue_minutes": 9})
+    rep_c = (r.get("report") or {}).get("id")
+    if rep_c:
+        s, r = call("POST", BASE + "/api/admin", {"action": "list_availability_reports"},
+                    headers={"X-Admin-Passcode": ADMIN})
+        rows = r.get("reports") or []
+        mine = [x for x in rows if x.get("id") == rep_c]
+        ok = (s == 200 and r.get("ok") is True and len(mine) == 1
+              and mine[0].get("station_id") == "CNG-006" and mine[0].get("status") == "low"
+              and "reporter_hash" not in mine[0])
+        check("admin list_availability_reports shows the test report (hash truncated)",
+              ok, f"HTTP {s} rows={len(rows)}")
+        s, r = call("POST", BASE + "/api/admin",
+                    {"action": "delete_availability_report", "id": rep_c},
+                    headers={"X-Admin-Passcode": ADMIN})
+        check("admin delete_availability_report", s == 200 and r.get("ok") is True, f"HTTP {s}")
+        s, r = call("GET", BASE + "/api/reports")
+        gone = not any(x.get("id") == rep_c for x in r.get("reports", []))
+        check("admin-deleted report gone from the live feed", gone, f"HTTP {s}")
+    else:
+        check("admin list_availability_reports shows the test report (hash truncated)", False, "no test report")
+        check("admin delete_availability_report", False, "no test report")
+        check("admin-deleted report gone from the live feed", False, "no test report")
+
+check_phase3()
 
 print()
 print("RESULT:", "ALL PASS — live APIs verified end to end" if not fails else f"{len(fails)} FAILURES: {fails}")

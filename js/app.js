@@ -2177,6 +2177,7 @@
   // better or worse on CNG than the estimate can say so. Editing the
   // km/litre or the vehicle resets it to the estimate.
   let kmpscmEdited = false;
+  let lastCalcSummary = ""; // the current calculation's shareable text, kept outside #calc-out
   function calc() {
     const v = F.VEHICLES[$("calc-vehicle").value];
     const kmDay = Math.max(0, parseFloat($("calc-km").value) || 0);
@@ -2214,10 +2215,11 @@
       `<div class="calc-row payback"><span>Conversion pays for itself in</span><b>${payback}</b></div>` +
       `</div><p class="small">${cost > 0 ? "Payback uses the conversion cost you entered (" + naira(cost) + "). " : esc(v.convLabel) + " "}Drivers report saving 50–75% on fuel in real life. ` +
       `This is fuel cost only — it does not count time spent queuing or extra plug/coil maintenance. ` +
-      `CNG use is ${kmpscm.toFixed(1)} km per SCM (estimate — change it above if your car does better or worse on CNG).</p>` +
-      `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn outline" id="calc-copy" style="margin-top:4px">📋 Copy my summary</button>` +
-      `<button class="btn outline" id="calc-download" style="margin-top:4px">⬇ Download summary (.txt)</button></div>`;
-    const summaryText = () =>
+      `CNG use is ${kmpscm.toFixed(1)} km per SCM (estimate — change it above if your car does better or worse on CNG).</p>`;
+    // The shareable summary text lives in a variable, NOT in the
+    // re-rendered output: the Copy/Download buttons are static HTML
+    // below #calc-out (wired once in init) and read this variable.
+    lastCalcSummary =
       `My CNG savings estimate (FindCNG Nigeria)\n` +
       `Vehicle: ${v.label} · ${kmDay} km/day × ${days} days = ${kmMonth.toLocaleString()} km/month\n` +
       `Petrol use: ${kpl} km/litre (${litres.toFixed(0)} litres/month at ₦${petrol}/litre) = ${naira(petrolCost)}/month\n` +
@@ -2226,25 +2228,6 @@
       `Payback: ${payback}${cost > 0 ? ` (conversion cost ${naira(cost)})` : ""}\n` +
       `Prices as reported ${F.PRICES.priceDate}. This is an estimate, not a guarantee — your car and your mileage change it.\n` +
       `Calculated at https://findcng.vercel.app/?view=calculator`;
-    const copyBtn = $("calc-copy");
-    if (copyBtn) copyBtn.addEventListener("click", () => {
-      const text = summaryText();
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => toast("Summary copied — paste it anywhere.")).catch(() => toast(text));
-      } else { toast(text); }
-    });
-    const dlBtn = $("calc-download");
-    if (dlBtn) dlBtn.addEventListener("click", () => {
-      const blob = new Blob([summaryText()], { type: "text/plain;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "findcng-savings-summary.txt";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      toast("Summary downloaded.");
-    });
     saveVehicleProfile();
   }
   function saveVehicleProfile() {
@@ -2419,6 +2402,26 @@
         : calc;
       $(id).addEventListener("input", handler);
       $(id).addEventListener("change", handler);
+    });
+    // Copy / Download read lastCalcSummary — they are static buttons,
+    // never re-rendered, so a tap can never be swallowed by a re-render.
+    $("calc-copy").addEventListener("click", () => {
+      if (!lastCalcSummary) { toast("Enter your numbers first."); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(lastCalcSummary).then(() => toast("Summary copied — paste it anywhere.")).catch(() => toast(lastCalcSummary));
+      } else { toast(lastCalcSummary); }
+    });
+    $("calc-download").addEventListener("click", () => {
+      if (!lastCalcSummary) { toast("Enter your numbers first."); return; }
+      const blob = new Blob([lastCalcSummary], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "findcng-savings-summary.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast("Summary downloaded.");
     });
     // Sheets
     $("report-submit").addEventListener("click", submitReport);
