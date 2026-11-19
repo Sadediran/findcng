@@ -89,8 +89,16 @@ try:
         body = pg.inner_text("#intelligence-body")
         check("intelligence: national overview (721 / 134 / 617 / 30 of 37)",
               "721" in body and "134" in body and "617" in body and "30 of 37" in body, body[:200].replace("\n", " | "))
-        check("intelligence: live-right-now counts the fresh report",
-              "1 station(s) have a fresh driver report" in body or "fresh driver report" in body, "")
+        # STRICT: the empty state ("no fresh driver report in the last
+        # 2 hours") must NOT pass — only the "1 station(s)" line counts.
+        # Reports arrive after the directory, so poll for up to 15 s.
+        live_ok = False
+        for _ in range(15):
+            if "1 station(s) have a fresh driver report" in pg.inner_text("#intelligence-body"):
+                live_ok = True
+                break
+            pg.wait_for_timeout(1000)
+        check("intelligence: live-right-now counts the fresh report", live_ok, "")
         check("intelligence: no separate operational register (honest)",
               "does not keep a separate" in body and "operational" in body, "")
         check("intelligence: pin precision (95 / 343 / 71)",
@@ -166,7 +174,7 @@ try:
         # Minutes old, no votes -> Medium confidence.
         pg.goto(BASE + "/?station=CNG-002", wait_until="domcontentloaded", timeout=60000)
         pg.wait_for_timeout(3000)
-        pg.wait_for_selector(".conf-chip", timeout=15000)
+        pg.wait_for_selector("#confidence-line .conf-chip", timeout=15000)
         conf = pg.inner_text("#confidence-line")
         check("detail: confidence chip present (Medium, minutes old, unconfirmed)",
               "Medium confidence" in conf, conf[:200])
@@ -191,7 +199,7 @@ try:
         expected = expected_confidence(age_min, counts)
         pg.reload(wait_until="domcontentloaded")
         pg.wait_for_timeout(3000)
-        pg.wait_for_selector(".conf-chip", timeout=15000)
+        pg.wait_for_selector("#confidence-line .conf-chip", timeout=15000)
         conf = pg.inner_text("#confidence-line")
         check(f"detail: confidence matches its inputs ({expected}, counts {counts})",
               expected in conf, conf[:200])
@@ -210,7 +218,7 @@ try:
         expected = expected_confidence(age_min, counts)
         pg.reload(wait_until="domcontentloaded")
         pg.wait_for_timeout(3000)
-        pg.wait_for_selector(".conf-chip", timeout=15000)
+        pg.wait_for_selector("#confidence-line .conf-chip", timeout=15000)
         conf = pg.inner_text("#confidence-line")
         check(f"detail: confidence follows disputed counts ({expected}, counts {counts})",
               expected in conf, conf[:200])
@@ -307,6 +315,15 @@ try:
         pg2.wait_for_timeout(3000)
         check("desktop: intelligence loads",
               "National overview" in pg2.inner_text("#intelligence-body"), "")
+        # The CNG-002 test report is still live here (cleanup runs after),
+        # so a fresh desktop load must also pick it up in "Live right now".
+        live2_ok = False
+        for _ in range(15):
+            if "1 station(s) have a fresh driver report" in pg2.inner_text("#intelligence-body"):
+                live2_ok = True
+                break
+            pg2.wait_for_timeout(1000)
+        check("desktop: live-right-now counts the fresh report", live2_ok, "")
         pg2.screenshot(path=f"{OUT}/12-intelligence-desktop.png", full_page=True)
         pg2.close()
 

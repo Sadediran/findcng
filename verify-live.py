@@ -267,9 +267,9 @@ except Exception as e:
     check("homepage carries the Phase 1 hero", False, str(e)[:120])
 try:
     s, sw = fetch_text(BASE + "/sw.js")
-    check("sw.js cache is findcng-v3.2.1", s == 200 and "findcng-v3.2.1" in sw)
+    check("sw.js cache is findcng-v3.2.2", s == 200 and "findcng-v3.2.2" in sw)
 except Exception as e:
-    check("sw.js cache is findcng-v3.2.1", False, str(e)[:120])
+    check("sw.js cache is findcng-v3.2.2", False, str(e)[:120])
 try:
     s, sm = fetch_text(BASE + "/sitemap.xml")
     check("sitemap lists the new views",

@@ -842,6 +842,13 @@
     renderHomeLive();
     renderHomeCentres();
     if (currentStation && $("view-station").classList.contains("active")) renderDetail(currentStation);
+    // Phase 3: the Intelligence view's "Live right now" line is computed
+    // from reports, and reports arrive after the directory — without this
+    // re-render it would keep showing "no fresh driver report" forever
+    // even while a fresh report was live (found by viewing the Phase 3
+    // screenshots; the first UI check had passed only because the empty
+    // state contains the words "fresh driver report").
+    renderIntelligence();
   }
 
   // ---------------- map ----------------
