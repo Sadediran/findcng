@@ -217,6 +217,20 @@ input[type="file"] { width: 100%; min-height: 48px; }
   border: 0; background: var(--green); color: #fff; border-radius: 999px;
   padding: 4px 10px; font-size: 12px; cursor: pointer;
 }
+/* Map error overlay (19 Nov 2026): when BOTH providers fail there is no
+   third keyless tile host (Wikimedia 403s browser agents, Carto needs a
+   key, OSM France 404s), so say so plainly with per-provider counts and
+   a Retry — never a silent grey map. */
+.map-error {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 1200; background: rgba(255,255,255,.97); color: var(--text);
+  border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  box-shadow: var(--shadow-md); max-width: calc(100% - 32px); width: 320px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 14px; text-align: center;
+}
+.map-error-detail { color: var(--muted); font-size: 13px; }
+.map-error-note { font-size: 13px; }
+.map-error-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; margin: 10px 0 4px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: 0 0 auto; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.65); }

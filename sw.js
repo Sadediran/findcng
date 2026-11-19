@@ -11,7 +11,7 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.3.7"; // bumped 19 Nov 2026 — map slow-tile UX: loading pill while tiles fetch, "Use street map" offer after 6s, auto-switch to street after 15s of continuous satellite loading (Esri tiles are ~3x OSM bytes, so slow connections sat grey with no error and no fallback). Earlier v3.3.6: admin.html favicon + "Loading live counts…" placeholder. Earlier v3.3.5: offline honesty, news seed deduped, skip link, privacy discloses operator-portal data. Earlier v3.3.4: operator search fix; v3.3.3: CSP + inline handlers converted. Earlier v3.3.2: multilingual safety; v3.3.1: admin dashboard; v3.3.0: operator portal
+const CACHE = "findcng-v3.3.8"; // bumped 19 Nov 2026 — map tile resilience: every failed tile retried once (only post-retry failures count toward fallback), street failure shows an on-map message with per-provider counts + Retry (no third keyless tile host exists: Wikimedia 403s browser agents, Carto needs a key, OSM France 404s), street slow-load (15s) shows the same message. Earlier v3.3.7: loading pill, 6s street offer, 15s satellite auto-fallback. Earlier v3.3.6: admin.html favicon + "Loading live counts…" placeholder. Earlier v3.3.5: offline honesty, news seed deduped, skip link, privacy discloses operator-portal data. Earlier v3.3.4: operator search fix; v3.3.3: CSP + inline handlers converted. Earlier v3.3.2: multilingual safety; v3.3.1: admin dashboard; v3.3.0: operator portal
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",

@@ -920,6 +920,7 @@
   function setMapLayer(kind, opts = {}) {
     if (!map || !baseLayers || !MAP_LAYERS[kind]) return;
     if (mapLayer === kind && map.hasLayer(baseLayers[kind])) { updateLayerSwitcher(); return; }
+    hideMapError();
     Object.values(baseLayers).forEach((l) => { if (map.hasLayer(l)) map.removeLayer(l); });
     mapLayer = kind;
     baseLayers[kind].addTo(map);
@@ -928,21 +929,112 @@
     // so the street layer's own errors can never re-trigger it (no loop).
     if (opts.fallbackFrom) tileFallbackArmed = false;
     else if (kind !== "street") tileFallbackArmed = true;
+    // Every switch to street re-arms the street-failure watch (fresh layer).
+    if (kind === "street") streetFailArmed = true;
     updateLayerSwitcher();
     if (opts.fallbackFrom) toast(MAP_LAYERS[opts.fallbackFrom].label + " map couldn't load — showing street map.");
   }
-  // Tile-failure fallback: 3+ tile errors within 10 seconds on the satellite
-  // layer means the provider is failing, not one bad tile — switch to
-  // the street layer so the map is never left broken or blank. The street
-  // layer itself is never watched, so the fallback cannot loop.
+  // Tile resilience (19 Nov 2026): flaky mobile data drops individual
+  // tiles, so every failed tile gets ONE retry 1.5s later (a retry that
+  // also fails is what counts toward the fallback). Only failures after
+  // a retry count — 3+ within 10s on satellite switches to street; on
+  // street there is no third provider (Wikimedia 403s browser user
+  // agents, Carto needs an API key now, OSM France 404s), so street
+  // failure shows an on-map message with counts and a Retry button
+  // instead of a silent grey map. Per-layer stats feed that message.
+  const tileStats = {
+    satellite: { loaded: 0, failed: 0 },
+    street: { loaded: 0, failed: 0 },
+  };
+  const tileRetried = new Set(); // tile URLs already retried once
+  let streetFailArmed = true; // false once the street-failure message shows
+  let mapErrorLoadedAt = 0; // total tiles loaded when the message appeared
+  function mapErrorEl() {
+    let el = $("map-error");
+    if (el) return el;
+    const mapEl = $("map");
+    if (!mapEl) return null;
+    el = document.createElement("div");
+    el.id = "map-error";
+    el.className = "map-error hidden";
+    el.setAttribute("role", "alert");
+    el.innerHTML = "<b>Map tiles aren't loading</b>" +
+      '<span class="map-error-detail"></span>' +
+      '<span class="map-error-note">The station list and search still work — use the tabs below.</span>' +
+      '<span class="map-error-btns"><button type="button" class="btn small" data-map-retry>Retry map</button>' +
+      '<button type="button" class="btn outline small" data-map-other>Try satellite</button></span>';
+    el.querySelector("[data-map-retry]").addEventListener("click", () => {
+      hideMapError();
+      streetFailArmed = true;
+      if (mapLayer === "satellite") tileFallbackArmed = true;
+      if (map && baseLayers && baseLayers[mapLayer]) baseLayers[mapLayer].redraw();
+    });
+    el.querySelector("[data-map-other]").addEventListener("click", () => {
+      setMapLayer(mapLayer === "satellite" ? "street" : "satellite");
+    });
+    mapEl.appendChild(el);
+    return el;
+  }
+  function showMapError() {
+    if (!streetFailArmed) return;
+    streetFailArmed = false;
+    hideMapLoading();
+    const el = mapErrorEl();
+    if (!el) return;
+    mapErrorLoadedAt = tileStats.satellite.loaded + tileStats.street.loaded;
+    const s = tileStats.satellite, t = tileStats.street;
+    el.querySelector(".map-error-detail").textContent =
+      `Satellite: ${s.loaded} loaded · ${s.failed} failed. Street: ${t.loaded} loaded · ${t.failed} failed.`;
+    el.querySelector("[data-map-other]").textContent =
+      mapLayer === "satellite" ? "Try street" : "Try satellite";
+    el.classList.remove("hidden");
+  }
+  function hideMapError() {
+    const el = $("map-error");
+    if (el) el.classList.add("hidden");
+  }
+  // Tile-failure fallback: 3+ post-retry tile errors within 10 seconds
+  // on the satellite layer means the provider is failing, not one bad
+  // tile — switch to the street layer. On street, show the error
+  // message instead (no third provider exists).
   function watchTileErrors(layer, kind) {
     let errors = [];
-    layer.on("tileerror", () => {
-      if (!tileFallbackArmed || mapLayer !== kind || !map || !map.hasLayer(layer)) return;
+    layer.on("tileload", () => {
+      tileStats[kind].loaded++;
+      // Genuine recovery clears the message: 3+ tiles loaded since it
+      // appeared (1–2 stragglers from the failed batch do not).
+      const el = $("map-error");
+      if (el && !el.classList.contains("hidden") &&
+          tileStats.satellite.loaded + tileStats.street.loaded - mapErrorLoadedAt >= 3) {
+        hideMapError();
+      }
+    });
+    layer.on("tileerror", (e) => {
+      const armed = kind === "satellite" ? tileFallbackArmed : streetFailArmed;
+      if (!armed || mapLayer !== kind || !map || !map.hasLayer(layer)) return;
+      const tile = e && e.tile;
+      const url = tile ? tile.src : "";
+      // One free retry per tile: flaky data drops single tiles that load
+      // fine a second later. A retry URL (or an already-retried one)
+      // failing again is a real failure and counts toward the fallback.
+      if (url && !url.includes("retry=1") && !tileRetried.has(url)) {
+        tileRetried.add(url);
+        if (tileRetried.size > 500) tileRetried.clear();
+        setTimeout(() => {
+          if (tile.isConnected && map && map.hasLayer(layer)) {
+            tile.src = url + (url.includes("?") ? "&" : "?") + "retry=1";
+          }
+        }, 1500);
+        return;
+      }
+      tileStats[kind].failed++;
       const now = Date.now();
       errors = errors.filter((t) => now - t < 10000);
       errors.push(now);
-      if (errors.length >= 3) setMapLayer("street", { fallbackFrom: kind });
+      if (errors.length >= 3) {
+        if (kind === "satellite") setMapLayer("street", { fallbackFrom: kind });
+        else showMapError();
+      }
     });
   }
   // Slow-tile UX (19 Nov 2026): on a slow connection the satellite layer
@@ -992,14 +1084,20 @@
         el.querySelector(".map-loading-text").textContent = "Still loading — slow connection?";
         el.querySelector(".map-loading-btn").classList.remove("hidden");
       }, 6000);
-      // Slow-load auto-fallback, satellite only: 15s of continuous
-      // loading with no 'load' event means the provider is too slow to
-      // use on this connection. Same disarm rules as the error fallback.
+      // Slow-load fallback: 15s of continuous loading with no 'load'
+      // event means the provider is too slow to use on this connection.
+      // Satellite switches to street; street shows the error message.
+      // Same disarm rules as the error fallback.
       clearTimeout(tileSlowTimer); tileSlowTimer = null;
       if (kind === "satellite") {
         tileSlowTimer = setTimeout(() => {
           if (!tileFallbackArmed || mapLayer !== "satellite" || !map || !map.hasLayer(layer)) return;
           setMapLayer("street", { fallbackFrom: "satellite" });
+        }, 15000);
+      } else {
+        tileSlowTimer = setTimeout(() => {
+          if (!streetFailArmed || mapLayer !== "street" || !map || !map.hasLayer(layer)) return;
+          showMapError();
         }, 15000);
       }
     });
@@ -1019,6 +1117,7 @@
       street: createBaseLayer("street"),
     };
     watchTileErrors(baseLayers.satellite, "satellite");
+    watchTileErrors(baseLayers.street, "street");
     watchLayerLoading(baseLayers.satellite, "satellite");
     watchLayerLoading(baseLayers.street, "street");
     mapLayer = storedMapLayer();
