@@ -91,39 +91,46 @@
   function typeBadge(t) { return `<span class="badge type">${F.TYPE_LABEL[t] || t}</span>`; }
   // ---------------- availability confidence (Phase 3, §8) ---------------
   // Every live report is COMMUNITY REPORTED — drivers reporting what they
-  // see. The "Operator confirmed" and "Officially verified" labels are
-  // reserved for the operator portal (Phase 4) and are never used here,
-  // because no operator or official confirmation exists yet.
+  // see — UNLESS its source is 'operator' (Phase 4, §15): a report an
+  // admin published by approving an operator's availability submission.
+  // "Officially verified" stays reserved and unused: no official
+  // confirmation feed exists yet.
   //
   // Confidence comes from three honest inputs, and the "why" is always
   // shown next to the level so the user can judge it themselves:
   //   freshness — how old the report is (reports expire after 2 hours)
   //   independent confirmations — net yes votes (yes minus no)
-  //   source — always community; it never raises the level on its own
+  //   source — community, or operator-confirmed (an operator report from
+  //     the station itself, approved by a moderator, is the most
+  //     reliable source and raises the level — but a disputed operator
+  //     report is still disputed)
   // Levels:
   //   Disputed — more drivers said the report is wrong than right
-  //   High     — reported in the last 30 min AND net confirmations >= 2
+  //   High     — reported in the last 30 min AND net confirmations >= 2,
+  //              OR operator-confirmed in the last 60 min
   //   Medium   — reported in the last 60 min with net >= 1, OR reported
   //              in the last 15 min (a minutes-old report from a driver
-  //              at the station, even unconfirmed)
+  //              at the station, even unconfirmed), OR operator-confirmed
+  //              and still inside the 2-hour window
   //   Low      — anything else still inside the 2-hour window
   // A report older than 2 hours has NO confidence at all — it is
   // unconfirmed, never "low confidence live".
-  function confidenceFor(ageMs, counts, countsLabel) {
+  function confidenceFor(ageMs, counts, countsLabel, source) {
     const mins = ageMs / 60000;
     const yes = counts ? (counts.yes || 0) : 0;
     const no = counts ? (counts.no || 0) : 0;
     const net = yes - no;
+    const isOperator = source === "operator";
     let level, label;
     if (counts && no > yes && no >= 1) { level = "disputed"; label = "Disputed report"; }
-    else if (mins <= 30 && net >= 2) { level = "high"; label = "High confidence"; }
-    else if ((mins <= 60 && net >= 1) || mins <= 15) { level = "medium"; label = "Medium confidence"; }
+    else if ((mins <= 30 && net >= 2) || (isOperator && mins <= 60)) { level = "high"; label = "High confidence"; }
+    else if ((mins <= 60 && net >= 1) || mins <= 15 || isOperator) { level = "medium"; label = "Medium confidence"; }
     else { level = "low"; label = "Low confidence"; }
     const ageBit = mins < 1 ? "Reported just now" : `Reported ${Math.floor(mins)} min ago`;
     const confBit = countsLabel || (!counts ? "confirmations not loaded yet"
       : (yes || no) ? `✓ confirmed by ${yes} driver${yes === 1 ? "" : "s"}${no ? `, ${no} said no` : ""}`
       : "no confirmations yet");
-    const why = `${ageBit} · ${confBit} · Community reported` +
+    const why = `${ageBit} · ${confBit} · ${isOperator ? "Operator confirmed" : "Community reported"}` +
       (level === "disputed" ? " — drivers disagree about this report, so treat it with caution" : "");
     return { level, label, why };
   }
@@ -235,11 +242,11 @@
   // ---------------- tabs ----------------
   const VIEWS = ["map", "stations", "centres", "station", "outages",
     "safety", "calculator", "news", "help", "privacy", "about", "more", "chat",
-    "intelligence", "postcode"];
+    "intelligence", "postcode", "operator"];
   // Views that live under the More menu: opening one highlights More in
   // the bottom nav (Phase 1).
   const MORE_VIEWS = ["chat", "safety", "calculator", "news", "help",
-    "privacy", "about", "intelligence", "postcode"];
+    "privacy", "about", "intelligence", "postcode", "operator"];
   function showView(name) {
     // Phase 3: the Phase 1 "Coverage & data" view was upgraded into
     // "CNG Intelligence" — old ?view=coverage links still land there.
@@ -514,9 +521,10 @@
       const counts = confirmCache.get(rid);
       if (!counts || counts === "not_open") return;
       let ageMs = null;
-      reports.forEach((r) => { if (r.id === rid) ageMs = Date.now() - r.ts; });
+      let source = "community";
+      reports.forEach((r) => { if (r.id === rid) { ageMs = Date.now() - r.ts; source = r.source || "community"; } });
       if (ageMs === null) return;
-      const conf = confidenceFor(ageMs, counts);
+      const conf = confidenceFor(ageMs, counts, undefined, source);
       el.innerHTML = confidenceChipHtml(conf) + ` <span class="tiny">${esc(conf.why)}</span>`;
     });
   }
@@ -824,7 +832,8 @@
             const prev = fresh.get(r.station_id);
             if (!prev || ts > prev.ts) {
               fresh.set(r.station_id, { id: r.id, status: r.status, queue: r.queue_minutes,
-                pressure: r.pressure_ok, compressor: r.compressor_ok, ts });
+                pressure: r.pressure_ok, compressor: r.compressor_ok, ts,
+                source: r.source || "community" });
             }
           }
         });
@@ -1762,6 +1771,7 @@
     } else if (r && st !== "unconfirmed") {
       statusBlock =
         `<p><b>Live status: ${F.STATUS[st].label}</b> · reported ${timeAgo(r.ts)}` +
+        `${r.source === "operator" ? ` <span class="op-chip">✓ Operator confirmed</span>` : ""}` +
         `${r.queue ? ` · queue about ${r.queue} min` : ""}` +
         `${r.pressure === true ? " · pressure OK" : r.pressure === false ? " · low pressure" : ""}` +
         `${r.compressor === true ? " · compressor working" : r.compressor === false ? " · compressor faulty" : ""}</p>` +
@@ -1794,6 +1804,7 @@
           `</div>`) +
       `<div class="card"><h3 style="margin-top:0">Opening hours</h3>${hoursHtml(s)}</div>` +
       verificationCard(s) +
+      `<div id="op-claim-badge"></div>` +
       `<div class="card"><h3 style="margin-top:0">Services</h3>${servicesHtml(s)}</div>` +
       `<div class="card"><h3 style="margin-top:0">Price</h3>${priceHtml(s)}</div>` +
       (s.live ? "" : `<div class="card"><h3 style="margin-top:0">Reliability — last 30 days</h3><div id="reliability-box"><p class="small">Loading report history…</p></div></div>`) +
@@ -1806,6 +1817,10 @@
         `<button class="btn outline small" onclick="openListing('${s.id}','incorrect')">⚠️ Report an incorrect listing</button>` +
         `<button class="btn outline small" onclick="openListing('${s.id}','closed')">⛔ Report a closure</button>` +
       `</div>`) +
+      (s.live ? "" : `<div class="detail-actions">` +
+        `<button class="btn outline small" id="detail-claim">🏢 Are you the operator? Claim this station</button>` +
+        `<button class="btn outline small" id="detail-op-update">✏️ Request an update</button>` +
+      `</div>`) +
       (!s.lat && !s.live ? `<p class="notice">This entry has no map position yet — its coordinates have not been recorded. The address above is what we have. If you know the exact spot, open “Report an incorrect listing” below and send the coordinates.</p>` : "") +
       `<p class="small">Source: ${esc(s.src)}${s.acc && !s.live ? " · Checked 18 Nov 2026" : ""}${s.live && s.liveListedAt ? " · Listed " + fmtDate(s.liveListedAt) : ""} · Listing ID ${esc(s.id)}</p>`;
     const favBtnEl = $("detail-fav");
@@ -1816,6 +1831,13 @@
         navigator.clipboard.writeText(url).then(() => toast("Link copied — share it anywhere.")).catch(() => toast(url));
       } else { toast(url); }
     });
+    // Operator portal entry points (Phase 4, §15): claim this station
+    // or request an update — both open the portal prefilled.
+    const claimBtn = $("detail-claim");
+    if (claimBtn) claimBtn.addEventListener("click", () => openOperator("claim", id));
+    const updBtn = $("detail-op-update");
+    if (updBtn) updBtn.addEventListener("click", () => openOperator("update", id));
+    loadClaimBadge(id);
     // One-tap confirm counts (graceful when the table is not open yet).
     const row = $("confirm-row");
     if (row && r && r.id) {
@@ -1866,7 +1888,7 @@
     const line = $("confidence-line");
     const r = currentStation ? reports.get(currentStation) : null;
     if (!line || !r) return;
-    const conf = confidenceFor(Date.now() - r.ts, counts, countsLabel);
+    const conf = confidenceFor(Date.now() - r.ts, counts, countsLabel, r.source || "community");
     line.innerHTML = confidenceChipHtml(conf) + ` <span>${esc(conf.why)}</span>`;
   }
   function submitConfirmation(reportId, stationId, vote) {
@@ -2170,6 +2192,320 @@
       });
   }
 
+  // ---------------- operator portal (Phase 4, §15) ----------------
+  // Verification-first: every submission goes to a moderator queue and
+  // NOTHING is published until an admin approves that exact submission.
+  // The portal is a form + a status check — there are no operator
+  // accounts and no automatic verification anywhere in this flow.
+  const OPERATOR_STATES = ["Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "Federal Capital Territory", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara"];
+  const OP_TYPE_HELP = {
+    register: "Register a conversion centre or refuelling station that is not in the directory yet. A moderator checks it against official lists before anything is published.",
+    claim: "Claim the listing of a station or centre you own or run. You will need a business documentation reference, and the moderator confirms by phone before approving — nobody can claim a station that is not theirs.",
+    update: "Ask for a correction to your listing — opening hours, services, phone number, or anything else that is wrong. The moderator checks it before the listing changes.",
+    availability: "Tell drivers whether your station has gas right now. Your update only becomes “Operator confirmed” on the listing after a moderator approves it — until then, nothing changes.",
+    response: "Answer a user report about your station — for example a listing report you disagree with. Your response goes to the moderator, not straight onto the listing.",
+  };
+  const OP_DETAILS = {
+    update: { label: "What should change? *", placeholder: "e.g. Our opening hours are now 7am–9pm daily, and our phone number is 0803…" },
+    response: { label: "Your response *", placeholder: "What do you want the moderator to know about this report?" },
+    claim: { label: "Anything else for the moderator", placeholder: "Optional — e.g. the best time to reach you by phone." },
+  };
+  let opType = "register";
+  let opStationId = null;   // directory id picked in the station search
+  let opStatus = null;      // availability status picked on the grid
+  const claimCache = new Map(); // station id -> { claimed, business_name } | "failed"
+
+  // "Operator-verified listing" badge on the detail page — shown only
+  // when an APPROVED claim exists for the station (public endpoint,
+  // business name only, no contact details). Silent when the portal is
+  // not open yet: no badge is the honest state then.
+  function loadClaimBadge(stationId) {
+    const box = $("op-claim-badge");
+    if (!box) return;
+    const cached = claimCache.get(stationId);
+    if (cached === "failed") return;
+    if (cached) {
+      if (cached.claimed) box.innerHTML = `<div class="card"><p style="margin:0"><span class="op-chip">✓ Operator-verified listing</span> — this listing is claimed by <b>${esc(cached.business_name || "its operator")}</b>, verified by a moderator.</p></div>`;
+      return;
+    }
+    fetch(`/api/operator?station=${encodeURIComponent(stationId)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j || !j.ok) { claimCache.set(stationId, "failed"); return; }
+        claimCache.set(stationId, j);
+        if (j.claimed) box.innerHTML = `<div class="card"><p style="margin:0"><span class="op-chip">✓ Operator-verified listing</span> — this listing is claimed by <b>${esc(j.business_name || "its operator")}</b>, verified by a moderator.</p></div>`;
+      })
+      .catch(() => claimCache.set(stationId, "failed"));
+  }
+
+  // Open the portal for one action, optionally prefilled with a station
+  // (from the detail page). Exposed globally for the detail buttons.
+  function openOperator(type, stationId) {
+    if (OP_TYPE_HELP[type]) setOpType(type);
+    if (stationId) {
+      const s = findStation(stationId);
+      if (s) {
+        opStationId = stationId;
+        const search = $("op-station-search");
+        const sel = $("op-station-selected");
+        if (search) search.value = s.name;
+        if (sel) sel.innerHTML = `Selected: <b>${esc(s.name)}</b> (${esc(s.id)}) — ${esc(locLabel(s))}`;
+        const res = $("op-station-results");
+        if (res) res.innerHTML = "";
+      }
+    }
+    showView("operator");
+  }
+  window.openOperator = openOperator;
+
+  function setOpType(type) {
+    opType = type;
+    document.querySelectorAll("#op-type-chips .chip").forEach((c) =>
+      c.classList.toggle("on", c.dataset.opType === type));
+    const help = $("op-type-help");
+    if (help) help.textContent = OP_TYPE_HELP[type] || "";
+    const show = (id, on) => { const el = $(id); if (el) el.classList.toggle("hidden", !on); };
+    const needsStation = type !== "register";
+    show("op-station-field", needsStation);
+    show("op-address-field", type === "register");
+    show("op-state-field", type === "register");
+    show("op-services-field", type === "register");
+    show("op-accred-field", type === "register");
+    show("op-accred-no-field", type === "register");
+    show("op-coords-field", type === "register");
+    show("op-proof-field", type === "claim");
+    show("op-details-field", type === "update" || type === "response" || type === "claim");
+    const d = OP_DETAILS[type];
+    if (d) {
+      const lbl = $("op-details-label");
+      const ta = $("op-details");
+      if (lbl) lbl.textContent = d.label;
+      if (ta) ta.placeholder = d.placeholder;
+    }
+    show("op-status-field", type === "availability");
+    show("op-queue-field", type === "availability");
+    show("op-pressure-field", type === "availability");
+    show("op-compressor-field", type === "availability");
+    show("op-reportref-field", type === "response");
+    if (type !== "availability") { opStatus = null; }
+    const msg = $("op-msg");
+    if (msg) msg.classList.add("hidden");
+  }
+
+  function opStationSearch() {
+    const q = ($("op-station-search").value || "").trim().toLowerCase();
+    const res = $("op-station-results");
+    if (!res) return;
+    if (q.length < 2) { res.innerHTML = ""; return; }
+    const hits = allStations()
+      .filter((s) => !s.live && ((s.name || "").toLowerCase().includes(q) ||
+        (s.city || "").toLowerCase().includes(q) || (s.state || "").toLowerCase().includes(q)))
+      .slice(0, 8);
+    if (!hits.length) {
+      res.innerHTML = `<p class="small">No listing matches that name. If the station is not in the directory yet, use “Register a centre” instead.</p>`;
+      return;
+    }
+    res.innerHTML = hits.map((s) =>
+      `<button type="button" class="op-pick" data-op-pick="${s.id}"><b>${esc(s.name)}</b><br><span class="small">${esc(locLabel(s))} · ${esc(s.id)}</span></button>`).join("");
+    res.querySelectorAll("[data-op-pick]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const s = findStation(b.dataset.opPick);
+        if (!s) return;
+        opStationId = s.id;
+        $("op-station-search").value = s.name;
+        $("op-station-selected").innerHTML = `Selected: <b>${esc(s.name)}</b> (${esc(s.id)}) — ${esc(locLabel(s))}`;
+        res.innerHTML = "";
+      }));
+  }
+
+  function submitOperator() {
+    const msg = $("op-msg");
+    const business = ($("op-business").value || "").trim();
+    if (business.length < 2) {
+      msg.textContent = "Enter your business name.";
+      msg.className = "notice err"; msg.classList.remove("hidden"); return;
+    }
+    const body = {
+      type: opType,
+      business_name: business,
+      contact_name: ($("op-contact").value || "").trim() || undefined,
+      phone: ($("op-phone").value || "").trim() || undefined,
+      email: ($("op-email").value || "").trim() || undefined,
+    };
+    if (opType === "register") {
+      body.address = ($("op-address").value || "").trim();
+      body.state = $("op-state").value || "";
+      body.services = ($("op-services").value || "").trim() || undefined;
+      body.accreditation_body = ($("op-accred-body").value || "").trim() || undefined;
+      body.accreditation_number = ($("op-accred-no").value || "").trim() || undefined;
+      const lat = $("op-lat").value, lng = $("op-lng").value;
+      if (lat !== "" && lng !== "") { body.latitude = Number(lat); body.longitude = Number(lng); }
+      if (body.address.length < 10) {
+        msg.textContent = "Enter the centre's address — enough for a driver to find it.";
+        msg.className = "notice err"; msg.classList.remove("hidden"); return;
+      }
+      if (!body.state) {
+        msg.textContent = "Select the state the centre is in.";
+        msg.className = "notice err"; msg.classList.remove("hidden"); return;
+      }
+    } else {
+      if (!opStationId) {
+        msg.textContent = "Pick your station from the search results first.";
+        msg.className = "notice err"; msg.classList.remove("hidden"); return;
+      }
+      body.station_id = opStationId;
+      if (!body.phone && !body.email) {
+        msg.textContent = "Enter a phone number or email so the moderator can reach you.";
+        msg.className = "notice err"; msg.classList.remove("hidden"); return;
+      }
+      if (opType === "claim") {
+        body.proof_reference = ($("op-proof").value || "").trim();
+        body.details = ($("op-details").value || "").trim() || undefined;
+        if (body.proof_reference.length < 10) {
+          msg.textContent = "Enter a business documentation reference (at least 10 characters) — the moderator checks it before approving a claim.";
+          msg.className = "notice err"; msg.classList.remove("hidden"); return;
+        }
+      } else if (opType === "update" || opType === "response") {
+        body.details = ($("op-details").value || "").trim();
+        if (body.details.length < 10) {
+          msg.textContent = opType === "update"
+            ? "Describe the change you are requesting."
+            : "Write what you want the moderator to know.";
+          msg.className = "notice err"; msg.classList.remove("hidden"); return;
+        }
+        if (opType === "response") {
+          body.listing_report_id = ($("op-reportref").value || "").trim() || undefined;
+        }
+      } else if (opType === "availability") {
+        if (!opStatus) {
+          msg.textContent = "Pick the gas status — available, low, finished or closed.";
+          msg.className = "notice err"; msg.classList.remove("hidden"); return;
+        }
+        body.status = opStatus;
+        const q = $("op-queue").value;
+        if (q !== "") body.queue_minutes = Number(q);
+        const pr = $("op-pressure").value;
+        if (pr === "yes") body.pressure_ok = true;
+        else if (pr === "no") body.pressure_ok = false;
+        const co = $("op-compressor").value;
+        if (co === "yes") body.compressor_ok = true;
+        else if (co === "no") body.compressor_ok = false;
+      }
+    }
+    const btn = $("op-submit");
+    btn.disabled = true;
+    msg.classList.add("hidden");
+    fetch("/api/operator", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then((r) => r.json().then((j) => ({ status: r.status, body: j })))
+      .then(({ status, body: j }) => {
+        btn.disabled = false;
+        if (j && j.error === "not_open") {
+          msg.textContent = "The operator portal is not open yet — the database table is still being set up. Nothing was saved; please try again later.";
+          msg.className = "notice"; msg.classList.remove("hidden");
+          return;
+        }
+        if (j && j.ok && j.id) {
+          try { localStorage.setItem("findcng_last_op", j.id); } catch { /* ignore */ }
+          $("op-form").classList.add("hidden");
+          $("op-success-note").textContent = j.duplicate
+            ? "This was already sent — a moderator is reviewing it. Your reference:"
+            : "Thank you — a moderator will review this. Nothing is published until it is approved. Your reference:";
+          $("op-ref").value = j.id;
+          $("op-success").classList.remove("hidden");
+          const checkInput = $("op-check-input");
+          if (checkInput) checkInput.value = j.id;
+        } else {
+          msg.textContent = (j && j.error) || "Could not send — try again.";
+          msg.className = "notice err"; msg.classList.remove("hidden");
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        msg.textContent = "Couldn't reach the server — try again. Your submission was NOT saved.";
+        msg.className = "notice err"; msg.classList.remove("hidden");
+      });
+  }
+
+  function checkOperatorStatus() {
+    const input = $("op-check-input");
+    const out = $("op-check-result");
+    if (!input || !out) return;
+    const id = (input.value || "").trim();
+    if (!id) {
+      out.innerHTML = `<p class="small">Enter the reference shown when you sent the submission — it is also saved on this device if you sent it from here.</p>`;
+      return;
+    }
+    out.innerHTML = `<p class="small">Checking…</p>`;
+    fetch(`/api/operator?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json().then((j) => ({ status: r.status, body: j })))
+      .then(({ status, body }) => {
+        if (body && body.error === "not_open") {
+          out.innerHTML = `<p class="notice">The operator portal is not open yet — the database table is still being set up.</p>`;
+          return;
+        }
+        if (status === 404 || !body || !body.ok) {
+          out.innerHTML = `<p class="notice err">No submission with that reference — check it and try again.</p>`;
+          return;
+        }
+        const s = body.submission;
+        const typeLabel = { register: "Centre registration", claim: "Ownership claim",
+          update: "Update request", availability: "Availability update", response: "Response to a report" }[s.type] || s.type;
+        const where = s.station_id && findStation(s.station_id) ? findStation(s.station_id).name : (s.station_id || "");
+        out.innerHTML = `<p style="margin:0"><b>${esc(s.business_name)}</b> — ${esc(typeLabel)}${where ? ` · ${esc(where)}` : ""}<br>` +
+          `Status: <b>${esc(s.status)}</b> · sent ${esc(fmtDate(s.submitted_at))}` +
+          (s.decision_reason ? `<br>Moderator note: ${esc(s.decision_reason)}` : "") +
+          (s.status === "pending" ? `<br><span class="small">A moderator reviews pending submissions in turn — nothing is published until it is approved.</span>` : "") + `</p>`;
+      })
+      .catch(() => {
+        out.innerHTML = `<p class="notice err">Could not reach the server — try again.</p>`;
+      });
+  }
+
+  function wireOperator() {
+    const stateSel = $("op-state");
+    if (stateSel) {
+      OPERATOR_STATES.forEach((st) => {
+        const o = document.createElement("option");
+        o.value = st; o.textContent = st;
+        stateSel.appendChild(o);
+      });
+    }
+    document.querySelectorAll("#op-type-chips .chip").forEach((c) =>
+      c.addEventListener("click", () => setOpType(c.dataset.opType)));
+    const search = $("op-station-search");
+    if (search) {
+      search.addEventListener("input", () => { opStationId = null; $("op-station-selected").textContent = ""; opStationSearch(); });
+    }
+    document.querySelectorAll("[data-op-status]").forEach((b) =>
+      b.addEventListener("click", () => {
+        document.querySelectorAll("[data-op-status]").forEach((x) => x.classList.remove("sel"));
+        b.classList.add("sel");
+        opStatus = b.dataset.opStatus;
+      }));
+    $("op-submit").addEventListener("click", submitOperator);
+    $("op-success-close").addEventListener("click", () => {
+      $("op-success").classList.add("hidden");
+      $("op-form").classList.remove("hidden");
+    });
+    $("op-ref-copy").addEventListener("click", () => {
+      const ref = $("op-ref").value;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ref).then(() => toast("Reference copied.")).catch(() => toast(ref));
+      } else { toast(ref); }
+    });
+    $("op-check-go").addEventListener("click", checkOperatorStatus);
+    $("op-check-input").addEventListener("keydown", (e) => { if (e.key === "Enter") checkOperatorStatus(); });
+    try {
+      const last = localStorage.getItem("findcng_last_op");
+      if (last) $("op-check-input").value = last;
+    } catch { /* ignore */ }
+    setOpType("register");
+  }
+
   // ---------------- route planner: REMOVED in 2.4 (18 Nov 2026) ----------------
   // Saheed asked for it to go: the map is not accurate enough overall and
   // routing did not pick some areas. The OSRM driving-route code, Nominatim
@@ -2453,6 +2789,8 @@
         if (last) $("lr-check-input").value = last;
       } catch { /* ignore */ }
     }
+    // Operator portal (Phase 4, §15).
+    wireOperator();
     $("report-backdrop").addEventListener("click", (e) => { if (e.target === $("report-backdrop")) $("report-backdrop").classList.remove("open"); });
     $("listing-backdrop").addEventListener("click", (e) => { if (e.target === $("listing-backdrop")) $("listing-backdrop").classList.remove("open"); });
     $("report-close").addEventListener("click", () => $("report-backdrop").classList.remove("open"));

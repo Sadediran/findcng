@@ -144,7 +144,7 @@
 
   <div class="card">
     <h3 style="margin-top:0">Find your way with your postcode</h3>
-    <p style="margin:0">Every building in Nigeria now has its own 11-character digital postcode. Enter your 6-digit area code above to centre the map on your district, or your 11-character building code to check it and save it as your label — then set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. <a href="#" onclick="showView('postcode');return false;">Explore postcodes →</a></p>
+    <p style="margin:0">Every building in Nigeria now has its own 11-character digital postcode. Enter your 6-digit area code above to centre the map on your district, or your 11-character building code to check it — then set your exact spot with GPS or a map tap. Find your building's code free at <a href="https://postcode.gov.ng/find" target="_blank" rel="noopener">postcode.gov.ng/find</a>. <a href="#" onclick="showView('postcode');return false;">Explore postcodes →</a></p>
   </div>
 
   <div class="card">
@@ -460,7 +460,11 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">How does a centre get listed?</h3>
-    <p style="margin:0">Listings come from official government and agency sources — the Pi-CNG registers and other public lists — not from centres registering themselves. A centre appears here once it is published on an official list. If a listing is wrong, open it and tap “Report an incorrect listing”.</p>
+    <p style="margin:0">Listings come from official government and agency sources — the Pi-CNG registers and other public lists. A centre can also register through the <a href="#" onclick="showView('operator');return false;">Operator portal</a> — but nothing is published until a moderator has checked it against official lists and approved it. If a listing is wrong, open it and tap “Report an incorrect listing”.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">I run a station or centre. How do I update my listing?</h3>
+    <p style="margin:0">Use the <a href="#" onclick="showView('operator');return false;">Operator portal</a>: claim your station (you will need a business documentation reference, and the moderator confirms by phone), request a correction, or send an availability update. Every submission is reviewed by a moderator — nothing is published, and no availability update is marked “Operator confirmed”, until it is approved.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">A listing is wrong. What do I do?</h3>
@@ -482,6 +486,153 @@
   <div class="card">
     <h3 style="margin-top:0">How do I reach the team?</h3>
     <p style="margin:0">To correct a listing, open the station and tap “Report an incorrect listing” — a moderator reviews it. For anything else, a public contact address will be published here once it is ready; until then, listing reports are the working route to the moderator. No contact details are invented or guessed.</p>
+  </div>
+</section>
+
+<!-- ============ OPERATOR PORTAL ============ -->
+<section id="view-operator" class="view">
+  <h2>Operator portal</h2>
+  <p class="lede">Run a CNG station or conversion centre? Register your business, claim your listing, request a correction, or send an availability update. <b>Every submission is reviewed by a moderator before anything is published</b> — nothing you send here appears on a listing until it is approved, and no availability update is marked “Operator confirmed” until then.</p>
+  <div class="card">
+    <h3 style="margin-top:0">What do you want to do?</h3>
+    <div class="chips" role="group" aria-label="Operator request type" id="op-type-chips">
+      <button class="chip on" data-op-type="register">Register a centre</button>
+      <button class="chip" data-op-type="claim">Claim my station</button>
+      <button class="chip" data-op-type="update">Request an update</button>
+      <button class="chip" data-op-type="availability">Availability update</button>
+      <button class="chip" data-op-type="response">Respond to a report</button>
+    </div>
+    <p class="small" id="op-type-help" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="card" id="op-form-card">
+    <div id="op-form">
+      <div class="field">
+        <label for="op-business">Business name *</label>
+        <input type="text" id="op-business" maxlength="200" placeholder="e.g. Fonnd Motor Ltd" autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="op-contact">Your name</label>
+        <input type="text" id="op-contact" maxlength="120" placeholder="The person the moderator should ask for">
+      </div>
+      <div class="field">
+        <label for="op-phone">Phone number</label>
+        <input type="tel" id="op-phone" maxlength="30" placeholder="e.g. 0803 123 4567" autocomplete="tel">
+      </div>
+      <div class="field">
+        <label for="op-email">Email address</label>
+        <input type="email" id="op-email" maxlength="120" placeholder="e.g. info@yourbusiness.ng" autocomplete="email">
+      </div>
+      <p class="small">Your phone number and email are private — only the moderator sees them, to verify your request. They are never published on a listing. For claims, updates, availability and responses, at least one contact is required so the moderator can reach you.</p>
+
+      <div class="field hidden" id="op-station-field">
+        <label for="op-station-search">Which station or centre? *</label>
+        <input type="text" id="op-station-search" placeholder="Type its name — e.g. NIPCO Benin" autocomplete="off">
+        <div id="op-station-results"></div>
+        <p class="small" id="op-station-selected" style="margin:8px 0 0"></p>
+      </div>
+
+      <div class="field hidden" id="op-address-field">
+        <label for="op-address">Centre address *</label>
+        <textarea id="op-address" maxlength="500" placeholder="Street, area, town — enough for a driver to find it"></textarea>
+      </div>
+      <div class="field hidden" id="op-state-field">
+        <label for="op-state">State *</label>
+        <select id="op-state"><option value="">Select a state…</option></select>
+      </div>
+      <div class="field hidden" id="op-services-field">
+        <label for="op-services">Services offered</label>
+        <input type="text" id="op-services" maxlength="500" placeholder="e.g. CNG conversion, cylinder testing, refuelling">
+      </div>
+      <div class="field hidden" id="op-accred-field">
+        <label for="op-accred-body">Accreditation body (if any)</label>
+        <input type="text" id="op-accred-body" maxlength="200" placeholder="e.g. NADDC / Pi-CNG">
+      </div>
+      <div class="field hidden" id="op-accred-no-field">
+        <label for="op-accred-no">Accreditation / certificate number (if any)</label>
+        <input type="text" id="op-accred-no" maxlength="200" placeholder="As printed on the certificate">
+      </div>
+      <div class="field hidden" id="op-coords-field">
+        <label>Exact coordinates (optional — only if you recorded them on site)</label>
+        <div style="display:flex;gap:8px">
+          <input type="number" id="op-lat" step="0.000001" min="4.2" max="13.9" placeholder="Latitude" aria-label="Latitude">
+          <input type="number" id="op-lng" step="0.000001" min="2.7" max="14.7" placeholder="Longitude" aria-label="Longitude">
+        </div>
+        <p class="small" style="margin:6px 0 0">Never guess coordinates — leave these blank unless you stood at the centre with a phone. A wrong pin misleads drivers.</p>
+      </div>
+
+      <div class="field hidden" id="op-proof-field">
+        <label for="op-proof">Business documentation reference *</label>
+        <input type="text" id="op-proof" maxlength="300" placeholder="e.g. CAC registration RC 1234567, or accreditation certificate no.">
+        <p class="small" style="margin:6px 0 0">To claim a station you must prove it is yours. Give a reference the moderator can check — a CAC registration, an accreditation certificate number, or a similar business document. The moderator also confirms by phone before approving a claim. There is no automatic verification.</p>
+      </div>
+
+      <div class="field hidden" id="op-details-field">
+        <label for="op-details" id="op-details-label">Details *</label>
+        <textarea id="op-details" maxlength="2000" placeholder=""></textarea>
+      </div>
+
+      <div class="field hidden" id="op-status-field">
+        <label>Gas status now *</label>
+        <div class="report-grid">
+          <button type="button" class="report-btn" data-op-status="available">✅<br>Gas available</button>
+          <button type="button" class="report-btn" data-op-status="low">🟡<br>Low / long queue</button>
+          <button type="button" class="report-btn" data-op-status="finished">🔴<br>Gas finished</button>
+          <button type="button" class="report-btn" data-op-status="closed">⛔<br>Closed</button>
+        </div>
+      </div>
+      <div class="field hidden" id="op-queue-field">
+        <label for="op-queue">Queue time (minutes) — optional</label>
+        <input type="number" id="op-queue" min="0" max="600" placeholder="e.g. 30">
+      </div>
+      <div class="field hidden" id="op-pressure-field">
+        <label for="op-pressure">Pressure OK? — optional</label>
+        <select id="op-pressure">
+          <option value="">Not sure / skip</option>
+          <option value="yes">Yes — full fill, good pressure</option>
+          <option value="no">No — low pressure / half fill</option>
+        </select>
+      </div>
+      <div class="field hidden" id="op-compressor-field">
+        <label for="op-compressor">Compressor working? — optional</label>
+        <select id="op-compressor">
+          <option value="">Not sure / skip</option>
+          <option value="yes">Yes</option>
+          <option value="no">No — compressor faulty</option>
+        </select>
+      </div>
+
+      <div class="field hidden" id="op-reportref-field">
+        <label for="op-reportref">Listing report reference (optional)</label>
+        <input type="text" id="op-reportref" maxlength="60" placeholder="The reference of the user report you are answering, if you have it">
+      </div>
+
+      <p id="op-msg" class="notice hidden"></p>
+      <button class="btn" id="op-submit">Send for review</button>
+      <p class="small" style="margin:10px 0 0">A moderator reviews every submission. Nothing is published until it is approved — an availability update you send here only becomes “Operator confirmed” after approval. If the portal is not open yet, the app will say so plainly instead of taking your submission.</p>
+    </div>
+    <div id="op-success" class="hidden">
+      <p id="op-success-note"></p>
+      <div class="field">
+        <label for="op-ref">Your reference — keep it to check the submission's status</label>
+        <input type="text" id="op-ref" readonly>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn outline" id="op-ref-copy">📋 Copy reference</button>
+        <button class="btn" id="op-success-close">Done</button>
+      </div>
+      <p class="small">Check its status any time below, under “Check a submission”. The reference is also saved on this device.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Check a submission you sent</h3>
+    <p class="small" style="margin-top:0">Enter the reference the app showed you when you sent it. The last reference sent from this device is filled in for you.</p>
+    <div class="locbar" style="margin-top:8px">
+      <input type="text" id="op-check-input" placeholder="Your reference — e.g. 9f2c…" aria-label="Operator submission reference">
+      <button class="btn small" id="op-check-go">Check</button>
+    </div>
+    <div id="op-check-result"></div>
   </div>
 </section>
 
@@ -529,7 +680,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">What it does</h3>
-    <p style="margin:0">FindCNG answers three questions: <b>is there gas near me right now, how long is the queue, and is that installer legit?</b> It maps CNG refuelling stations and accredited conversion centres nationwide, shows live availability reported by drivers, and explains safety in plain English and Pidgin.</p>
+    <p style="margin:0">FindCNG answers three questions: <b>is there gas near me right now, how long is the queue, and is that installer legit?</b> It maps CNG refuelling stations and accredited conversion centres nationwide, shows live availability reported by drivers, and explains safety in plain English, Pidgin, Hausa, Yoruba and Igbo.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Coverage — honest numbers</h3>
@@ -541,7 +692,7 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">How centres are listed</h3>
-    <p style="margin:0">A centre is “Officially accredited” if it appears on the Pi-CNG accredited centres register (checked 18 Nov 2026). Listings come from official government and agency sources — the Pi-CNG registers and other public lists — not from centres registering themselves. Entries from 2024 lists carry a “Needs re-verification” badge until re-checked against a current source.</p>
+    <p style="margin:0">A centre is “Officially accredited” if it appears on the Pi-CNG accredited centres register (checked 18 Nov 2026). Listings come from official government and agency sources — the Pi-CNG registers and other public lists — and from operators who register through the Operator portal, where every submission is checked by a moderator before anything is published. Entries from 2024 lists carry a “Needs re-verification” badge until re-checked against a current source.</p>
   </div>
   <div class="card">
     <h3 style="margin-top:0">Data sources</h3>
@@ -580,6 +731,10 @@
     <button class="menu-item" onclick="showView('help')">❓ Help &amp; FAQ <span>Postcodes, reporting, badges, offline use</span></button>
     <button class="menu-item" onclick="showView('about')">ℹ️ About &amp; sources <span>Who built it, coverage, data sources</span></button>
     <button class="menu-item" onclick="showView('privacy')">🔒 Privacy <span>What we collect, how long we keep it, removal requests</span></button>
+  </div>
+  <h3 class="menu-group">For operators</h3>
+  <div class="card menu">
+    <button class="menu-item" onclick="showView('operator')">🏢 Operator portal <span>Register a centre, claim your station, request updates — reviewed by a moderator</span></button>
   </div>
   <h3>★ Your favourite stations</h3>
   <div id="fav-list"></div>
