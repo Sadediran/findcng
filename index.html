@@ -285,18 +285,22 @@
 
 <!-- ============ SAFETY ============ -->
 <section id="view-safety" class="view">
-  <h2>Is CNG safe?</h2>
+  <h2 id="safety-title">Is CNG safe?</h2>
   <div class="chips" role="group" aria-label="Safety language">
     <button class="chip on" data-lang="en">English</button>
     <button class="chip" data-lang="pcm">Pidgin</button>
+    <button class="chip" data-lang="ha">Hausa</button>
+    <button class="chip" data-lang="yo">Yoruba</button>
+    <button class="chip" data-lang="ig">Igbo</button>
   </div>
+  <p class="review-note hidden" id="safety-review-note">⚠️ This translation was produced in-session and is awaiting review by a native speaker before it is presented as final. The facts and numbers are the same as the English version — but if anything reads oddly, trust the English version and tell the moderator.</p>
   <div class="card factbox">
     <p style="margin:0" id="safety-lead"><b>The short answer: a certified CNG system is safe. Fake cylinders and quack installers are the danger.</b><br><br>
     Properly designed, certified and professionally installed automotive CNG systems are subject to strict safety standards and inspections. Unauthorised cylinders, uncertified conversion kits and improper installation increase the risk of serious incidents.<br><br>
     Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation — fake or welded cylinders, cooking-gas cylinders, air-conditioner cylinders, or overfilling.</p>
   </div>
 
-  <h3>What actually causes explosions</h3>
+  <h3 id="safety-h-causes">What actually causes explosions</h3>
   <div class="card" id="safety-causes">
     <p><b>1. Fake or welded cylinders.</b> A local welder fabricates a cylinder from scrap metal. It was never designed or tested to hold gas at high pressure. This caused the Benin City explosion of October 2024 — 3 people severely injured, one leg amputated. The welder was arrested. <span class="small">(Source: Standards Organisation of Nigeria; Punch / BusinessDay, Oct 2024.)</span></p>
     <p><b>2. The wrong cylinder entirely.</b> LPG cooking-gas cylinders and even air-conditioner cylinders have been fitted as CNG cylinders. They are not built for CNG pressure. One car was destroyed in September 2026 after an AC cylinder was fitted with AC pipe. <span class="small">(Source: Facebook video, Senior Advocate of Truth, Sep 2026.)</span></p>
@@ -318,7 +322,7 @@
     <p class="tiny" style="margin:8px 0 0">Sources: NADDC, SON and Pi-CNG statements and Punch / BusinessDay / Nairametrics reporting, Oct 2024 – Nov 2026. Full evidence base: the project's public sentiment report.</p>
   </div>
 
-  <h3>Myth vs fact</h3>
+  <h3 id="safety-h-myths">Myth vs fact</h3>
   <div id="safety-myths">
     <div class="card myth"><p style="margin:0"><b>Myth:</b> “CNG cars are time bombs.”<br><b>Fact:</b> Of the incidents investigated so far, each one traced to uncertified equipment or unqualified installation — fake cylinders or quack fitting. A certified system, installed by an accredited centre, is built and inspected to strict standards.</p></div>
     <div class="card fact"><p style="margin:0"><b>Myth:</b> “It will blow up in the heat.”<br><b>Fact:</b> CNG ignites at about 700°C — petrol ignites at about 455°C. CNG needs much more heat to catch fire. And CNG is lighter than air: if it leaks, it rises and disperses instead of pooling on the ground like petrol.</p></div>
@@ -326,7 +330,7 @@
     <div class="card fact"><p style="margin:0"><b>Myth:</b> “Conversion is a one-time job.”<br><b>Fact:</b> Cylinders must be tested every 3 years. Ask your centre when your cylinder is due for its test.</p></div>
   </div>
 
-  <h3>Stay safe — the checklist</h3>
+  <h3 id="safety-h-checklist">Stay safe — the checklist</h3>
   <div class="card" id="safety-checklist">
     <p>✅ Convert only at an <b>accredited centre</b> — check it on the Centres tab first.</p>
     <p>✅ Ask to see the <b>accreditation certificate</b> and the cylinder's certification markings.</p>
@@ -722,7 +726,7 @@
   </div>
   <h3 class="menu-group">Learn &amp; save</h3>
   <div class="card menu">
-    <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English + Pidgin</span></button>
+    <button class="menu-item" onclick="showView('safety')">🛡️ Safety hub <span>Is CNG safe? Incidents, myths, checklist — English, Pidgin, Hausa, Yoruba, Igbo</span></button>
     <button class="menu-item" onclick="showView('calculator')">🧮 Savings calculator <span>CNG vs petrol, payback time, annual savings</span></button>
     <button class="menu-item" onclick="showView('news')">📰 CNG news <span>Dated updates from the programme, with sources</span></button>
   </div>
@@ -832,6 +836,7 @@
 
 <script src="js/leaflet.js"></script>
 <script src="js/data.js"></script>
+<script src="js/safety-i18n.js"></script>
 <script src="js/postcode.js"></script>
 <script src="js/app.js"></script>
 <script src="js/news.js"></script>

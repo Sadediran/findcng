@@ -11,11 +11,11 @@
    saw the old "Approximate location" badge for CNG-038 for that reason
    (18 Nov 19:59 WAT). Network-first still falls back to the cache
    offline, so the directory keeps working with no signal. */
-const CACHE = "findcng-v3.3.1"; // bumped 19 Nov 2026 — Phase 4: admin dashboard (role-based tabs, operator queue + verification checklist, audit log, analytics, data quality, duplicates, postcode monitor); admin script moved to js/admin.js for CSP. Earlier v3.3.0: operator portal + operator-confirmed reports
+const CACHE = "findcng-v3.3.2"; // bumped 19 Nov 2026 — Phase 4: multilingual safety hub (Hausa, Yoruba, Igbo added; translations marked as awaiting native-speaker review). Earlier v3.3.1: admin dashboard + js/admin.js; v3.3.0: operator portal
 const SHELL = [
   "index.html", "admin.html", "manifest.json",
   "css/style.css", "css/leaflet.css",
-  "js/leaflet.js", "js/data.js", "js/postcode.js", "js/app.js", "js/chat.js", "js/news.js", "js/admin.js",
+  "js/leaflet.js", "js/data.js", "js/safety-i18n.js", "js/postcode.js", "js/app.js", "js/chat.js", "js/news.js", "js/admin.js",
   "data/stations.json", "data/postcodes.json", "data/stats.json", "data/news-seed.json", "data/history.json",
 ];
 

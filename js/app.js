@@ -2615,11 +2615,25 @@
     calc();
   }
 
-  // ---------------- safety language toggle (EN / Pidgin) ----------------
+  // ---------------- safety language toggle (EN / Pidgin / Hausa / Yoruba / Igbo) ----------------
+  // Phase 4 (§17): Hausa, Yoruba and Igbo join English + Pidgin for the
+  // safety hub's core content (lead, causes, myths, checklist + the
+  // headings). The translations live in js/safety-i18n.js and were
+  // produced in-session — they are AWAITING native-speaker review, so
+  // the review banner shows whenever one of those languages is picked,
+  // and the translations are never presented as professionally verified.
+  // The incidents table stays in English (dates, place names, sources).
+  const SAFETY_LANGS = { pcm: "SAFETY_PCM", ha: "SAFETY_HA", yo: "SAFETY_YO", ig: "SAFETY_IG" };
+  const SAFETY_HEADINGS = { "safety-title": "title", "safety-h-causes": "causes",
+    "safety-h-myths": "myths", "safety-h-checklist": "checklist" };
   function initSafetyLang() {
     ["safety-lead", "safety-causes", "safety-myths", "safety-checklist"].forEach((id) => {
       const el = $(id);
       if (el) safetyEn[id] = el.innerHTML;
+    });
+    Object.keys(SAFETY_HEADINGS).forEach((id) => {
+      const el = $(id);
+      if (el) safetyEn[id] = el.textContent;
     });
     document.querySelectorAll("[data-lang]").forEach((b) =>
       b.addEventListener("click", () => setSafetyLang(b.dataset.lang)));
@@ -2628,12 +2642,23 @@
     safetyLang = lang;
     document.querySelectorAll("[data-lang]").forEach((b) =>
       b.classList.toggle("on", b.dataset.lang === lang));
+    const pack = SAFETY_LANGS[lang] ? F[SAFETY_LANGS[lang]] : null;
     const map = { "safety-lead": "lead", "safety-causes": "causes", "safety-myths": "myths", "safety-checklist": "checklist" };
     Object.entries(map).forEach(([id, key]) => {
       const el = $(id);
       if (!el) return;
-      el.innerHTML = lang === "pcm" && F.SAFETY_PCM[key] ? F.SAFETY_PCM[key] : safetyEn[id];
+      el.innerHTML = (pack && pack[key]) ? pack[key] : safetyEn[id];
     });
+    Object.entries(SAFETY_HEADINGS).forEach(([id, key]) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = (pack && pack.headings && pack.headings[key]) ? pack.headings[key] : safetyEn[id];
+    });
+    const banner = $("safety-review-note");
+    if (banner) {
+      const needsReview = lang === "ha" || lang === "yo" || lang === "ig";
+      banner.classList.toggle("hidden", !needsReview);
+    }
   }
 
   // ---------------- deep links ----------------
