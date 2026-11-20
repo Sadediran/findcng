@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-19",
+ "generated": "2026-11-20",
  "total_records": 721,
  "total_records_label": "Directory records — every station and centre entry in the dataset.",
  "refuelling_locations": 134,
@@ -25,10 +25,10 @@
   "Yobe",
   "Zamfara"
  ],
- "with_coordinates": 509,
+ "with_coordinates": 510,
  "with_coordinates_label": "Entries with recorded coordinates — only these appear on the map.",
  "coord_precision": {
-  "exact": 95,
+  "exact": 96,
   "approximate": 343,
   "town": 71
  },
@@ -297,8 +297,8 @@
    "refuelling": 9,
    "conversion": 18,
    "accredited": 13,
-   "with_coords": 15,
-   "pct_mapped": 75
+   "with_coords": 16,
+   "pct_mapped": 80
   },
   {
    "state": "Ekiti",

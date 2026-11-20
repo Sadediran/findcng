@@ -7,5 +7,14 @@
   "picng_register_matched": 576,
   "states_with_data": 30,
   "with_coordinates": 509
+ },
+ {
+  "date": "2026-11-20",
+  "total_records": 721,
+  "refuelling_locations": 134,
+  "conversion_centres": 617,
+  "picng_register_matched": 576,
+  "states_with_data": 30,
+  "with_coordinates": 510
  }
 ]

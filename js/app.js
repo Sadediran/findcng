@@ -35,7 +35,7 @@
   let mapLayer = "satellite";   // current base layer kind; persisted as findcng_maplayer
   let tileFallbackArmed = true; // false once a tile-failure fallback has fired (re-armed by a manual switch)
   let streetViaProxy = false; // street layer currently loading via /api/tiles
-  const APP_VERSION = "3.3.12"; // shown under the map; bump with the SW cache name on every release
+  const APP_VERSION = "3.3.13"; // shown under the map; bump with the SW cache name on every release
   let currentStation = null;    // id open in the detail view
   let prevView = "map";
   let reportStatus = null;      // status picked in the report sheet
