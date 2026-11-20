@@ -2,6 +2,8 @@
 
 **Find gas near you — live availability, verified centres, nationwide.**
 
+**Live:** https://findcng.vercel.app
+
 A live, mobile-first web app for finding CNG refuelling stations and verified
 conversion centres across Nigeria. Built by ED/26B/2316, a serving NYSC corps
 member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
@@ -18,7 +20,7 @@ member in the NADDC–NYSC CNG Retrofitting Training Programme (Edo State, 1 of
 - **Savings calculator** — CNG vs petrol at current reported prices, conversion-cost input, payback period, daily/monthly/annual savings; editable CNG-use estimate (km per SCM); copy or download the summary as a .txt file; vehicle profile remembered on the device
 - **News page** — dated programme updates, each with its original source
 - **Ask about CNG** — AI chat (Gemini free tier, OpenRouter free backup — verified working 19 Nov 2026) answering safety, price, savings and availability questions, grounded in the verified knowledge base (`data/chat-knowledge.json`), live news, fresh availability reports, web search, and read-only lookups of named stations in the directory (missing fields answered “Information unavailable”, never invented); no sources shown; no chat logs stored
-- **Operator portal** — centre registration, station ownership claims, update requests, availability updates and responses to user reports — every submission lands in the admin moderation queue; nothing publishes or is marked “Operator confirmed” until an admin approves that exact submission (claims require a business documentation reference + phone confirmation; verification is a manual admin checklist — there is no automatic verification). Needs `sql/003_operator_portal.sql` in Supabase before submissions are accepted (see below); until then the portal shows an honest “not open yet”.
+- **Operator portal** — centre registration, station ownership claims, update requests, availability updates and responses to user reports — every submission lands in the admin moderation queue; nothing publishes or is marked “Operator confirmed” until an admin approves that exact submission (claims require a business documentation reference + phone confirmation; verification is a manual admin checklist — there is no automatic verification). Backed by `sql/003_operator_portal.sql`, run live 19 Nov 2026 — the portal is open and submissions flow through the moderation queue.
 - **Admin dashboard** (`/admin.html`) — role-based (Super admin / Data admin / Verifier passcodes): overview with live counts, listing reports, availability moderation, operator verification queue, audit log, data quality (incl. duplicate detection and accreditation review) and postcode monitoring. Nothing auto-publishes as verified without admin approval.
 - **Offline directory** — cached station + centre info and offline search; when the browser reports offline, live availability is withdrawn everywhere at once (never presented as current) and syncs again on reconnect
 - **Privacy page** — retention periods, removal requests (contact TBD)
@@ -54,17 +56,17 @@ confirmations + listing reports. Running cost ~₦0/month on free tiers.
   an “Operator-verified listing” badge. Needs
   `sql/003_operator_portal.sql` (see Supabase setup below); until it is
   run, submissions answer an honest 503 `not_open` and the portal says
-  so — **as of this release sql/003 has NOT been run** (no DDL route
+  so — as of this release sql/003 had NOT been run (no DDL route
   exists from this VM), so the end-to-end flow could not be verified
-  live; `verify-live.py` detects the state and tests the matching
-  behaviour, and re-running it after sql/003 exercises the full
-  register → queue → approve → published-state flow.
+  live at that point; `verify-live.py` detects the state and tests the
+  matching behaviour. **Update 19 Nov 2026 ~20:32 WAT: sql/003 was run
+  live and the operator portal is open.**
 - **Admin dashboard (§16):** `admin.html` rebuilt as a tabbed
   dashboard (Overview, Listing reports, Availability, Operator queue,
   Audit log, Data quality, Postcode) with its logic in `js/admin.js`
   (no inline script — CSP). Overview tiles are live counts from the
   database/directory, labelled as such. Data quality shows real counts
-  (721 / 509 / 95 exact / 18 phones), the duplicate-detection view
+  (721 / 510 / 95+ exact / 18 phones), the duplicate-detection view
   (48 groups, 2 exact-pin pairs — CNG-282/430 Lugbe and CNG-387/428
   Jahi — surfaced, never merged), and accreditation review (36 stale
   2024, 9 single-source). Postcode monitoring shows mode + key status
@@ -80,8 +82,8 @@ confirmations + listing reports. Running cost ~₦0/month on free tiers.
   the UI (buttons hidden per role; a verifier opening a listing report
   sees a read-only note). Operator approval has a manual verification
   checklist (documentation reference checked + confirmed by phone) for
-  claims. Every admin action is written to `audit_log` (needs sql/003;
-  until then the Audit tab says “not open yet”). The Phase 3 cosmetic
+  claims. Every admin action is written to `audit_log` (via sql/003,
+  run live 19 Nov 2026). The Phase 3 cosmetic
   issue was investigated and closed: the admin availability list never
   had a `created_at` field — `reported_at` is the timestamp and is
   always populated. Content editor and support administrator roles are
@@ -373,10 +375,11 @@ never need the database.
    audit log need it. Until it is run, operator submissions answer an
    honest 503 `not_open`, the operator queue and audit log tabs say
    “not open yet”, and reports have no `source` field (the APIs degrade
-   gracefully — nothing crashes). **As of 19 Nov 2026 this step has NOT
-   been run** — it is a 2-minute step in the Supabase SQL editor, then
-   re-run `python3 verify-live.py` to exercise the full operator
-   end-to-end flow.
+   gracefully — nothing crashes). On the live deployment this step was
+   run 19 Nov 2026 ~20:32 WAT; a fresh deploy still needs this
+   2-minute step in the Supabase SQL editor, then re-run
+   `python3 verify-live.py` to exercise the full operator end-to-end
+   flow.
 4. Dashboard → Settings → API → copy the **Project URL** and the
    **`service_role` secret key** into the Vercel env vars above. (The `anon`
    key is also listed there; copy it too for completeness.)
