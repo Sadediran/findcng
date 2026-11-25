@@ -1,12 +1,12 @@
 {
- "generated": "2026-11-20",
- "total_records": 721,
+ "generated": "2026-11-25",
+ "total_records": 724,
  "total_records_label": "Directory records — every station and centre entry in the dataset.",
  "refuelling_locations": 134,
  "refuelling_label": "Unique refuelling locations (refuelling-only + both).",
- "conversion_centres": 617,
+ "conversion_centres": 620,
  "conversion_label": "Unique conversion centres (conversion-only + both).",
- "picng_register_matched": 576,
+ "picng_register_matched": 579,
  "picng_register_label": "Conversion centres matched on the Pi-CNG accredited centres register (checked 18 Nov 2026).",
  "picng_refuel_register_matched": 105,
  "picng_refuel_register_label": "Refuelling locations matched on the Pi-CNG refuelling stations register (updated 15 Oct 2026).",
@@ -170,11 +170,11 @@
   },
   {
    "state": "Kwara",
-   "count": 16
+   "count": 17
   },
   {
    "state": "Lagos",
-   "count": 190
+   "count": 192
   },
   {
    "state": "Nasarawa",
@@ -392,21 +392,21 @@
   },
   {
    "state": "Kwara",
-   "total": 16,
+   "total": 17,
    "refuelling": 5,
-   "conversion": 12,
-   "accredited": 11,
+   "conversion": 13,
+   "accredited": 12,
    "with_coords": 10,
-   "pct_mapped": 62
+   "pct_mapped": 59
   },
   {
    "state": "Lagos",
-   "total": 190,
+   "total": 192,
    "refuelling": 25,
-   "conversion": 168,
-   "accredited": 159,
+   "conversion": 170,
+   "accredited": 161,
    "with_coords": 155,
-   "pct_mapped": 82
+   "pct_mapped": 81
   },
   {
    "state": "Nasarawa",
